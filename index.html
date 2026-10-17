@@ -71,13 +71,14 @@ const ROCKS = [
 ];
 const GULL = { fw: 43, fh: 40, hb: { x: 6, y: 14, w: 32, h: 20 } };
 const GULL_Y = LANE - 106;    // hitbox bottom sits just above the rider's head
-const POST = { w: 14, h: 126, hb: { x: 3, y: 8, w: 8, h: 118 } };   // channel marker: needs a held jump
+const POST_W = 14;   // channel markers, by hitbox top above the water: low (a tap clears it), mid (short hold), tall (full hold)
+const POSTS = [76, 96, 114].map(t => ({ h: t + 13, hb: { x: 3, y: 8, w: 8, h: t + 5 } }));
 
 function speedAt(tt) { return Math.min(400, 160 + 190 * (1 - Math.exp(-tt / 70)) + 0.9 * tt); }
 
 function makeObstacle(spec, x) {
   if (spec.type === 'rock') { const R = ROCKS[spec.k]; return { type: 'rock', k: R.img, x, y: LANE + 5 - R.h, w: R.w, h: R.h, hb: R.hb }; }
-  if (spec.type === 'post') return { type: 'post', x, y: LANE + 5 - POST.h, w: POST.w, h: POST.h, hb: POST.hb };
+  if (spec.type === 'post') { const Q = POSTS[spec.k]; return { type: 'post', k: spec.k, x, y: LANE + 5 - Q.h, w: POST_W, h: Q.h, hb: Q.hb }; }
   return { type: 'bird', x, y: GULL_Y, w: GULL.fw, h: GULL.fh, hb: GULL.hb, ph: 0 };
 }
 function obsBox(o, bob) { return { x: o.x + o.hb.x, y: o.y + (o.type === 'bird' ? bob : 0) + o.hb.y, w: o.hb.w, h: o.hb.h }; }
@@ -129,9 +130,17 @@ const PATTERNS = {
       return { obs: [{ type: 'rock', k: k1, dx: 0 }, { type: 'rock', k: k2, dx: x2 }], len: x2 + ROCKS[k2].w, hold: leap };
     },
   },
-  post: {     // channel marker taller than a tap can clear
+  postlo: {   // short marker: looks scary, a tap clears it
+    unlock: [250, 400], weight: 0.8,
+    make() { return { obs: [{ type: 'post', k: 0, dx: 0 }], len: POST_W }; },
+  },
+  post: {     // mid marker: taller than a tap can clear
     unlock: [450, 650], weight: 1.1,
-    make() { return { obs: [{ type: 'post', dx: 0 }], len: POST.w, hold: true }; },
+    make() { return { obs: [{ type: 'post', k: 1, dx: 0 }], len: POST_W, hold: true }; },
+  },
+  posthi: {   // tall marker: full hold; retired once the screen scrolls too fast to read it in time
+    unlock: [900, 1100], weight: 0.9, maxSpeed: 350,
+    make() { return { obs: [{ type: 'post', k: 2, dx: 0 }], len: POST_W, hold: true }; },
   },
   thread: {   // rock, then a gull right behind it: tap (not hold) so you're down before it arrives
     unlock: [600, 800], weight: 1.3,
@@ -181,6 +190,7 @@ const store = {
 let best = parseInt(store.get('jetskijump.best', '0'), 10) || 0;
 let muted = store.get('jetskijump.muted', '0') === '1';
 let postsCleared = parseInt(store.get('jetskijump.postscleared', '0'), 10) || 0;
+let tallCleared = parseInt(store.get('jetskijump.tallcleared', '0'), 10) || 0;
 
 // ---------- shells, shop & cloud save ----------
 // 1 shell per 10 m + 5 per near miss. Recolours are hue/saturation/lightness shifts of the sprite's own shades.
@@ -459,17 +469,18 @@ function tintedPlayer(skiId, suitId) {
   return out;
 }
 
-const POST_ART = (() => {    // red & white channel marker with a day-mark on top
-  const c = document.createElement('canvas'); c.width = POST.w; c.height = POST.h;
+const POST_ART = POSTS.map((POST, k) => {    // red & white channel marker; day-mark green / yellow / red by height
+  const c = document.createElement('canvas'); c.width = POST_W; c.height = POST.h;
   const g = c.getContext('2d');
   const r = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
-  r(1, 0, 12, 10, '#2a1f3d'); r(2, 1, 10, 8, '#2fbf71'); r(2, 1, 10, 2, '#7be08a');   // green day-mark
+  const dm = [['#2fbf71', '#7be08a'], ['#ffc23d', '#fff0a0'], ['#e8365f', '#ff8fa3']][k];
+  r(1, 0, 12, 10, '#2a1f3d'); r(2, 1, 10, 8, dm[0]); r(2, 1, 10, 2, dm[1]);
   r(5, 10, 4, POST.h - 16, '#2a1f3d');
   for (let y = 11; y < POST.h - 6; y++) r(6, y, 2, 1, Math.floor((y - 11) / 9) % 2 ? '#ffffff' : '#e8365f');
   r(6, 11, 1, POST.h - 17, 'rgba(255,255,255,0.35)');
   r(2, POST.h - 7, 10, 5, '#2a1f3d'); r(3, POST.h - 6, 8, 3, '#e8365f'); r(3, POST.h - 6, 8, 1, '#ff8fa3');   // float
   return c;
-})();
+});
 
 // ---------- audio ----------
 let actx = null;
@@ -657,7 +668,7 @@ function nextPhase() {
   else { dir.phase = 'calm'; dir.left = 1 + Math.floor(Math.random() * 3); }
 }
 function pickPattern(m) {
-  const avail = Object.keys(PATTERNS).filter(k => m >= dir.unlock[k]);
+  const avail = Object.keys(PATTERNS).filter(k => m >= dir.unlock[k] && !(speed > PATTERNS[k].maxSpeed));
   const birdOk = avail.includes('bird') && dir.last !== 'bird';
   if (dir.phase === 'calm') return birdOk && Math.random() < Math.min(0.4, 0.18 + m / 2500) ? 'bird' : 'rock';
   const fresh = avail.filter(k => !dir.seen[k] && k !== 'rock' && k !== 'bird');
@@ -687,7 +698,8 @@ function spawn() {
     if (o.type === 'bird') bird = true;
   }
   if (bird) sfx.squawk();
-  if (name === 'post' && postsCleared < 2) { popups.push({ text: 'HOLD FOR BIG JUMP!', age: -LEAD * 0.5, life: 1.8, y: 150, size: 2, col: ['#ffffff', '#c9f6ff'] }); }
+  const hint = name === 'post' && postsCleared < 2 ? 'HOLD FOR BIG JUMP!' : name === 'posthi' && tallCleared < 2 ? 'HOLD ALL THE WAY!' : '';
+  if (hint) popups.push({ text: hint, age: -LEAD * 0.5, life: 1.8, y: 150, size: 2, col: ['#ffffff', '#c9f6ff'] });
   // gap to the next pattern: airtime + a reaction margin that shrinks with distance
   const d = Math.min(1, m / 1500);
   let react = (0.8 - 0.4 * d) + Math.random() * (0.9 - 0.45 * d);
@@ -743,7 +755,8 @@ function pickWord(list) {
 }
 function streakBonus() { return streak >= 8 ? 25 : streak >= 5 ? 15 : streak >= 3 ? 10 : 5; }
 function scorePass(o) {
-  if (o.type === 'post' && postsCleared < 2) { postsCleared++; store.set('jetskijump.postscleared', String(postsCleared)); }
+  if (o.type === 'post' && o.k === 1 && postsCleared < 2) { postsCleared++; store.set('jetskijump.postscleared', String(postsCleared)); }
+  if (o.type === 'post' && o.k === 2 && tallCleared < 2) { tallCleared++; store.set('jetskijump.tallcleared', String(tallCleared)); }
   const close = o.type === 'rock' ? o.visGap <= NEAR_T : o.minGap <= CLOSE_PX[o.type];
   if (!close) { if (o.type !== 'bird') streak = 0; return; }   // riding under a gull is neutral
   streak++; nearCount++;
@@ -939,7 +952,7 @@ function drawObstacles() {
     if (o.x > VW) continue;
     if (o.type === 'rock') ctx.drawImage(img[o.k], Math.round(o.x), o.y);
     else if (o.type === 'post') {
-      ctx.drawImage(POST_ART, Math.round(o.x), o.y);
+      ctx.drawImage(POST_ART[o.k], Math.round(o.x), o.y);
       if (Math.floor(animT * 3) % 2 === 0) rect(o.x + 6, o.y - 3, 2, 3, '#ffe066');
     } else {
       const seq = [0, 1, 2, 1], f = seq[Math.floor(animT * 10 + o.ph) % 4];
