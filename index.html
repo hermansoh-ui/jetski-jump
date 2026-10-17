@@ -139,7 +139,7 @@ const PATTERNS = {
     make() { return { obs: [{ type: 'post', k: 1, dx: 0 }], len: POST_W, hold: true }; },
   },
   posthi: {   // tall marker: full hold; retired once the screen scrolls too fast to read it in time
-    unlock: [900, 1100], weight: 0.9, maxSpeed: 350,
+    unlock: [900, 1100], weight: 0.9, maxSpeed: 320,
     make() { return { obs: [{ type: 'post', k: 2, dx: 0 }], len: POST_W, hold: true }; },
   },
   thread: {   // rock, then a gull right behind it: tap (not hold) so you're down before it arrives
@@ -176,6 +176,7 @@ const PATTERNS = {
 
 let VW = 270;
 const LEAD = 0.35;            // seconds obstacles spend off-screen (gull warnings show during this)
+const POST_LEAD = 0.4;        // posts wait longer off-screen so their warning badge can be read
 const CLOSE_PX = { rock: 11, post: 10, bird: 6 };   // clearance that counts as a near miss (riding under a gull is 10-14px)
 const ROCK_WORDS = ['NICE!', 'WHOA!', 'CLEAN!', 'SO CLOSE!', 'SLICK!', 'WOW!', 'SMOOTH!'];
 const BIRD_WORDS = ['WHOOSH!', 'DUCK!', 'FEATHERS!', 'CHEEKY!'];
@@ -1181,7 +1182,8 @@ function spawn() {
   dir.seen[name] = true; dir.last = name;
   const u = intro ? 0 : Math.max(0, Math.min(1, (m - dir.unlock[name]) / 1400 + (dir.phase === 'build' ? 0.15 : -0.25) + (Math.random() - 0.5) * 0.3));
   const pat = PATTERNS[name].make(speed, u, Math.random, m);
-  const x0 = VW + 8 + speed * (LEAD + (intro ? 0.3 : 0));
+  const extra = pat.obs.some(o => o.type === 'post') ? POST_LEAD : 0;
+  const x0 = VW + 8 + speed * (LEAD + extra + (intro ? 0.3 : 0));
   let bird = false;
   for (const s of pat.obs) {
     const o = makeObstacle(s, x0 + s.dx);
@@ -1197,7 +1199,7 @@ function spawn() {
   let react = (0.8 - 0.4 * d) + Math.random() * (0.9 - 0.45 * d);
   if (dir.phase === 'calm') react += 0.25;
   if (intro) react += 0.3;
-  nextGap = speed * ((pat.hold ? AIR_HOLD : AIR) + react) + pat.len + FW * 0.7;
+  nextGap = speed * ((pat.hold ? AIR_HOLD : AIR) + react + extra) + pat.len + FW * 0.7;
 }
 
 function playerTop() { return LANE + 2 - HULL_B - Math.round(P.lift) + (P.airborne ? 0 : bob()); }
@@ -1587,8 +1589,19 @@ function drawObstacles() {
     }
   }
 }
-function drawWarnings() {   // gulls about to arrive: blinking "!" badge on the right edge
+const POST_WARN = [['TAP', '#2fbf71', 12], ['HOLD', '#ffc23d', 20], ['MAX', '#e8365f', 28]];
+function drawWarnings() {   // obstacles about to arrive: badges on the right edge
   for (const o of obstacles) {
+    if (o.type === 'post' && o.x > VW) {   // mini marker at its size + how to jump it; steady, pulses as it nears
+      const [word, col, ph] = POST_WARN[o.k], near = o.x - VW < speed * 0.25;
+      if (near && Math.floor(animT * 10) % 2) continue;
+      const bw = 20, bh = 36, x = VW - bw - 4, y = LANE - bh - 8;
+      rect(x - 2, y - 2, bw + 4, bh + 4, '#2a1f3d'); rect(x, y, bw, bh, '#fff6e0'); rect(x, y, bw, 2, '#ffffff');
+      const py = y + bh - 4 - ph;
+      rect(x + 5, py, 10, 6, col); rect(x + 9, py + 6, 3, ph - 6, '#e8365f'); rect(x + 4, y + bh - 4, 12, 3, '#e8365f');
+      text(word, VW - 3, y - 18, 2, col, '#2a1f3d', 'right');
+      continue;
+    }
     if (o.type !== 'bird' || o.x <= VW || Math.floor(animT * 8) % 2) continue;
     const x = VW - 15, y = o.y + 16;
     rect(x - 1, y - 1, 13, 15, '#2a1f3d'); rect(x, y, 11, 13, '#ffd35c'); rect(x, y, 11, 2, '#fff6b8');
