@@ -268,7 +268,31 @@ const SHOP = {
     { id: 'decal-diamond', name: 'DIAMOND', price: C3, art: 'diamond' },
     { id: 'decal-bow', name: 'BOW', price: C3, art: 'bow' },
     { id: 'decal-lips', name: 'KISS', price: C3, art: 'lips' },
-    { id: 'decal-wings', name: 'WINGS', price: LEG, leg: true },
+    { id: 'decal-holo', name: 'HOLO HEART', price: LEG, holo: true, leg: true },
+  ] },
+  tail: { label: 'TAIL', items: [   // things on the back of the jet ski; t keys TAIL_DRAW, ix/iy nudge the shop swatch
+    { id: 'tail-none', name: 'NONE', price: 0 },
+    { id: 'tail-pennant', name: 'PENNANT', price: C1, t: 'pennant', iy: 6 },
+    { id: 'tail-streamers', name: 'STREAMERS', price: C1, t: 'streamers', ix: 4, iy: -2 },
+    { id: 'tail-balloon', name: 'RED BALLOON', price: C1, t: 'balloon', ix: 4, iy: 24 },
+    { id: 'tail-pinwheel', name: 'PINWHEEL', price: C1, t: 'pinwheel', iy: 7 },
+    { id: 'tail-windsock', name: 'WINDSOCK', price: C1, t: 'windsock', ix: 2, iy: 5 },
+    { id: 'tail-daisy', name: 'DAISY', price: C1, t: 'daisy', iy: 12 },
+    { id: 'tail-lolly', name: 'LOLLIPOP', price: C1, t: 'lolly', iy: 11 },
+    { id: 'tail-heart', name: 'SWEETHEART', price: C2, t: 'heart', ix: 4, iy: 26 },
+    { id: 'tail-bunch', name: 'BALLOONS', price: C2, t: 'bunch', ix: 6, iy: 31 },
+    { id: 'tail-pirate', name: 'JOLLY ROGER', price: C2, t: 'pirate', ix: 4, iy: 12 },
+    { id: 'tail-pride', name: 'RAINBOW', price: C2, t: 'pride', ix: 2, iy: 10 },
+    { id: 'tail-kite', name: 'KITE', price: C2, t: 'kite', ix: 11, iy: 35 },
+    { id: 'tail-rod', name: 'FISHING ROD', price: C2, t: 'rod', ix: 8, iy: 10 },
+    { id: 'tail-torch', name: 'TIKI TORCH', price: C2, t: 'torch', iy: 18 },
+    { id: 'tail-prop', name: 'PROPELLER', price: C3, t: 'prop', iy: 6 },
+    { id: 'tail-rocket', name: 'ROCKET', price: C3, t: 'rocket', ix: 4, iy: -2 },
+    { id: 'tail-star', name: 'GOLD STAR', price: C3, t: 'star', ix: 4, iy: 26 },
+    { id: 'tail-parasol', name: 'PARASOL', price: C3, t: 'parasol', ix: -3, iy: 16 },
+    { id: 'tail-dragon', name: 'DRAGON KITE', price: C3, t: 'dragon', ix: 14, iy: 35 },
+    { id: 'tail-jelly', name: 'JELLYFISH', price: C3, t: 'jelly', ix: 4, iy: 23 },
+    { id: 'tail-wings', name: 'ANGEL WINGS', price: LEG, leg: true },
   ] },
   suit: { label: 'OUTFIT', items: [
     { id: 'suit-teal', name: 'LAGOON', price: 0 },
@@ -344,14 +368,15 @@ const SHOP = {
   ] },
   hat: { label: 'HATS', items: [] },
 };
-const SLOTS = ['ski', 'decal', 'suit', 'hair', 'wake', 'hat'];
+const SLOTS = ['ski', 'decal', 'tail', 'wake', 'suit', 'hair', 'hat'];   // shop tabs: jet ski row of 4, rider row of 3
 const ITEM = {};
 for (const s of SLOTS) for (const it of SHOP[s].items) { it.slot = s; ITEM[it.id] = it; }
 for (const s of SLOTS) for (const t in TIER_RANGE) {   // spread each tier's items cheapest to dearest in list order
   const its = SHOP[s].items.filter(it => it.price === +t), [lo, hi, step] = TIER_RANGE[t];
   its.forEach((it, i) => { it.price = Math.round((lo + (hi - lo) * (its.length > 1 ? i / (its.length - 1) : 0)) / step) * step; });
 }
-const DEFAULT_EQ = { ski: 'ski-blue', decal: 'decal-none', suit: 'suit-teal', hair: 'hair-natural', wake: 'wake-classic', hat: null };
+const DEFAULT_EQ = { ski: 'ski-blue', decal: 'decal-none', tail: 'tail-none', suit: 'suit-teal', hair: 'hair-natural', wake: 'wake-classic', hat: null };
+const RENAMED = { 'decal-wings': 'tail-wings' };   // v11: wings moved from the decal tab to the tail tab
 const FREE = Object.values(DEFAULT_EQ).filter(Boolean);
 // v7/v8 prices, refunded down to the new ones once
 const OLD_PRICE = { 'ski-pink': 400, 'ski-mint': 400, 'ski-lilac': 500, 'ski-sunset': 500, 'ski-cherry': 600, 'ski-midnight': 750, 'ski-pearl': 750, 'ski-gold': 2500,
@@ -362,11 +387,13 @@ function freshSave() { return { v: 2, shells: WELCOME_SHELLS, owned: [...FREE], 
 function cleanSave(s) {
   const d = freshSave();
   if (!s || typeof s !== 'object') return d;
-  const owned = [...new Set([...d.owned, ...(Array.isArray(s.owned) ? s.owned.filter(id => ITEM[id]) : [])])];
+  const owned = [...new Set([...d.owned, ...(Array.isArray(s.owned) ? s.owned.map(id => RENAMED[id] || id).filter(id => ITEM[id]) : [])])];
+  const se = { ...(s.eq || {}) };
+  if (se.decal === 'decal-wings') { se.decal = 'decal-none'; se.tail = 'tail-wings'; }
   let shells = Math.max(0, Math.floor(+s.shells || 0));
   if (!(s.v >= 2)) { const r = owned.reduce((a, id) => a + Math.max(0, (OLD_PRICE[id] || 0) - ITEM[id].price), 0); shells += r; refundNote = Math.max(refundNote, r); }
   const eq = { ...DEFAULT_EQ };
-  for (const k in eq) if (s.eq && owned.includes(s.eq[k]) && ITEM[s.eq[k]].slot === k) eq[k] = s.eq[k];
+  for (const k in eq) if (owned.includes(se[k]) && ITEM[se[k]].slot === k) eq[k] = se[k];
   return { v: 2, shells, owned, eq, best: Math.max(0, Math.floor(+s.best || 0)), rev: Math.floor(+s.rev || 0) };
 }
 let save = (() => { try { const raw = store.get('jetskijump.save', null); return raw ? cleanSave(JSON.parse(raw)) : freshSave(); } catch (e) { return freshSave(); } })();
@@ -506,6 +533,11 @@ function pixelArt(rows, pal) {
   rows.forEach((r, y) => { for (let x = 0; x < r.length; x++) if (pal[r[x]]) { g.fillStyle = pal[r[x]]; g.fillRect(x, y, 1, 1); } });
   return c;
 }
+function scaled(src, k = 2) {   // nearest-neighbour upscale
+  const c = document.createElement('canvas'); c.width = src.width * k; c.height = src.height * k;
+  const g = c.getContext('2d'); g.imageSmoothingEnabled = false; g.drawImage(src, 0, 0, c.width, c.height);
+  return c;
+}
 const DOLPHIN = pixelArt([
   '..........ooo...................',
   '...........obbo.................',
@@ -596,7 +628,9 @@ function buildPix() {
   const HULL = new Map(HULL_COLS.map((h, i) => [key(h), i])), HA = new Set(HAIR_A.map(key)), HB = new Set(HAIR_B.map(key)), VEST = key(VEST_COLS[0]);
   const mask = document.createElement('canvas'); mask.width = W; mask.height = H;
   const mg = mask.getContext('2d'); mg.fillStyle = '#ffffff';
-  PIX = { hull: [], hair: [], vest: [], nose: [], mask };
+  const fill = document.createElement('canvas'); fill.width = W; fill.height = H;
+  const fg = fill.getContext('2d'); fg.fillStyle = '#ffffff';
+  PIX = { hull: [], hair: [], vest: [], nose: [], mask, fill };
   for (let f = 0; f < NFR; f++) {
     const hull = [], hair = [], vest = [];
     for (let y = 0; y < H; y++) for (let x = 0; x < FW; x++) {
@@ -612,9 +646,17 @@ function buildPix() {
     let md = 1;
     for (const p of hair) { p.v = Math.hypot(p.x - cx, p.y - top); md = Math.max(md, p.v); }
     for (const p of hair) p.v /= md;
+    const rows = new Map();
+    for (const p of hull) { if (!rows.has(p.y)) rows.set(p.y, []); rows.get(p.y).push(p.x); }
+    for (const [y, xs] of rows) { xs.sort((a, b) => a - b); for (let i = 1; i < xs.length; i++) if (xs[i] - xs[i - 1] > 1 && xs[i] - xs[i - 1] <= 12) fg.fillRect(f * FW + xs[i - 1], y, xs[i] - xs[i - 1], 1); }
+    for (let y = HULL_Y + 1; y < H - 1; y++) for (let x = 0; x < FW; x++) {   // and the dark seam rows between hull rows
+      const on = (yy) => rows.has(yy) && rows.get(yy).some(v => Math.abs(v - x) <= 1);
+      if (!rows.has(y) || !rows.get(y).includes(x)) { if (on(y - 1) && (on(y + 1) || on(y + 2))) fg.fillRect(f * FW + x, y, 1, 1); }
+    }
     PIX.hull.push(hull); PIX.hair.push(hair); PIX.vest.push(vest);
     PIX.nose.push({ x: Math.max(...hull.map(p => p.x)), y: Math.min(...hull.map(p => p.y)) });
   }
+  fg.drawImage(mask, 0, 0);
 }
 const tintCache = new Map();
 function tintedPlayer(eq) {
@@ -682,18 +724,30 @@ const DECAL_ART = {
   bow: ['pp...pp', 'ppprppp', 'pp.r.pp', '..r.r..'],
   lips: ['.rr.rr.', 'rhrrrhr', '.rrrrr.', '..rrr..'],
 };
-for (const k in DECAL_ART) DECAL_ART[k] = outlined(pixelArt(DECAL_ART[k], DECAL_PAL));
-const DECAL_AT = [[51, 63], [53, 63], [47, 58], [48, 62], [52, 64]];   // per frame: decal centre on the side of the hull
+const DECAL_SM = {};   // shop swatch keeps 1x; on the hull decals are 2x with a dark outline
+for (const k in DECAL_ART) { const a = pixelArt(DECAL_ART[k], DECAL_PAL); DECAL_SM[k] = outlined(a); DECAL_ART[k] = outlined(scaled(a)); }
+// holographic heart (decal legendary): 12 hue phases with a white shimmer band
+const HOLO_ROWS = ['.hh.hh.', 'hhhhhhh', 'hhhhhhh', '.hhhhh.', '..hhh..', '...h...'];
+const HOLO = [...Array(12)].map((_, k) => {
+  const c = document.createElement('canvas'); c.width = 7; c.height = 6; const g = c.getContext('2d');
+  HOLO_ROWS.forEach((r, y) => { for (let x = 0; x < 7; x++) if (r[x] === 'h') {
+    const band = ((x + y - k) % 12 + 12) % 12;
+    g.fillStyle = band < 1 ? '#ffffff' : 'hsl(' + ((x * 30 + y * 22 + k * 30) % 360) + ',95%,72%)'; g.fillRect(x, y, 1, 1);
+  } });
+  return { sm: outlined(c), big: outlined(scaled(c)) };
+});
+const DECAL_AT = [[52, 60], [54, 60], [47, 55], [49, 58], [51, 60]];   // per frame: decal centre on the side of the hull
 const decalCache = new Map();
-function decalLayer(id) {   // the decal on every frame, clipped to the hull
+function decalLayer(id) {   // the decal on every frame, clipped to the hull silhouette (seams filled, so it reads as a sticker)
   const it = ITEM[id];
-  if (!it || !it.art) return null;
-  if (decalCache.has(id)) return decalCache.get(id);
-  const a = DECAL_ART[it.art], c = document.createElement('canvas'); c.width = img.player.width; c.height = img.player.height;
+  if (!it || !(it.art || it.holo)) return null;
+  const key = it.holo ? id + Math.floor(animT * 10) % 12 : id;
+  if (decalCache.has(key)) return decalCache.get(key);
+  const a = it.holo ? HOLO[Math.floor(animT * 10) % 12].big : DECAL_ART[it.art], c = document.createElement('canvas'); c.width = img.player.width; c.height = img.player.height;
   const g = c.getContext('2d');
   DECAL_AT.forEach(([x, y], f) => g.drawImage(a, f * FW + x - Math.floor(a.width / 2), y - Math.floor(a.height / 2)));
-  g.globalCompositeOperation = 'destination-in'; g.drawImage(PIX.mask, 0, 0);
-  decalCache.set(id, c);
+  g.globalCompositeOperation = 'destination-in'; g.drawImage(PIX.fill, 0, 0);
+  decalCache.set(key, c);
   return c;
 }
 const WINGS = [0, 1, 2, 3].map(k => {   // feathered wing, four flap positions
@@ -739,6 +793,129 @@ function drawUnicorn(f, x, y) {   // rainbow flows down the hair
     ctx.fillStyle = UNI[Math.floor((((p.v * 320 - animT * 150) % 360) + 360) % 360 / 10)][p.s];
     ctx.fillRect(x + p.x, y + p.y, 1, 1);
   }
+}
+
+// ---------- tail: things fixed to the back of the jet ski ----------
+const TAIL_AT = [[6, 67], [8, 67], [6, 64], [5, 73], [6, 53]];   // per frame: stern deck, where a pole is mounted
+const INK = '#2a1f3d';
+const TP = { r: '#e8365f', h: '#ff9fb4', p: '#ff7aa8', y: '#ffd35c', Y: '#fff6b8', o: '#ff9a3d', w: '#ffffff', g: '#4cc46a', G: '#2f8f4e', b: '#5fa8ff', B: '#2f6fd6', l: '#c9a2ff', L: '#a98cff', k: INK, n: '#8a5a3a', c: '#8ff0ff' };
+const TART = {
+  balloon: ['.rrr.', 'rhrrr', 'rhrrr', 'rrrrr', '.rrr.', '..r..'],
+  yballoon: ['.yyy.', 'yYyyy', 'yYyyy', 'yyyyy', '.yyy.', '..y..'],
+  bballoon: ['.bbb.', 'bcbbb', 'bcbbb', 'bbbbb', '.bbb.', '..b..'],
+  heart: ['.pp.pp.', 'phppppp', 'phppppp', 'ppppppp', '.ppppp.', '..ppp..', '...p...'],
+  star: ['....y....', '...yYy...', 'yyyyYyyyy', '.yyyyyyy.', '..yyyyy..', '.yyy.yyy.', '.yy...yy.'],
+  pin0: ['p...y', 'pp.yy', '..k..', 'bb.gg', 'b...g'],
+  pin1: ['..y..', 'p.y.y', 'ppkyy', 'b.g.g', '..g..'],
+  daisy: ['.w.w.', 'wwwww', '.wyw.', 'wwwww', '.w.w.'],
+  lolly0: ['.ppp.', 'pwwpp', 'pwppw', 'ppwwp', '.ppp.'],
+  lolly1: ['.ppp.', 'ppwwp', 'wppwp', 'ppwwp', '.ppp.'],
+  kite: ['...r...', '..rry..', '.rrryy.', 'rrrryyy', '.bbbgg.', '..bbg..', '...b...'],
+  rocket: ['..rr.......', '.rwwwwwwrr.', 'rwwwbwwwwrr', '.rwwwwwwrr.', '..rr.......'],
+  parasol: ['....ppwwp....', '..pppwwwppp..', '.wppppwppppw.', 'wwwppppppwwww', 'w.w..p.p..w.w'],
+  dhead: ['..y....', '.rrrr..', 'rrkrrrr', 'rrrrrry', '.rrrr..', '..y....'],
+  jelly0: ['..lll..', '.lLlll.', 'lLlllll', 'lllllll', 'l.l.l.l'],
+  jelly1: ['.lllll.', 'lLlllll', 'lllllll', 'l.lll.l'],
+  flame0: ['..y..', '.yYy.', '.yYo.', 'oyyo.', '.oro.'],
+  flame1: ['.y...', '..y..', '.yYy.', 'oyYyo', '.oro.'],
+  flame2: ['...y.', '..yy.', '.yYo.', '.yYyo', '.oro.'],
+};
+for (const k in TART) TART[k] = outlined(scaled(pixelArt(TART[k], TP)));   // 2x so they read at a glance
+const SKULL = ['...........', '....www....', '...wwwww...', '...wkwkw...', '....www....', '..w.w.w.w..', '...w...w...', '...........'];
+function pole(x, y, h, c = '#f3ead8') { rect(x - 1, y - h - 1, 3, h + 1, INK); rect(x, y - h, 1, h, c); }
+function flag(x, top, w, h, col, t, taper = 0) {   // cloth flying to the left of a pole at x
+  for (let i = 0; i <= w; i++) {
+    const hi = Math.max(1, Math.round(h * (1 - taper * i / w))), off = Math.floor((h - hi) / 2);
+    const Y = top + off + Math.round(Math.sin(t * 9 - i * 0.8) * 1.6 * i / w), X = x - 1 - i;
+    rect(X, Y - 1, 1, hi + 2, INK);
+    if (i < w) for (let j = 0; j < hi; j++) rect(X, Y + j, 1, 1, col(i, Math.floor(j * h / hi)));
+  }
+}
+function line(x0, y0, x1, y1, c, sag = 0) {   // 1px string, optionally sagging
+  const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
+  for (let i = 0; i <= n; i++) { const u = i / n; rect(Math.round(x0 + (x1 - x0) * u), Math.round(y0 + (y1 - y0) * u + Math.sin(u * Math.PI) * sag), 1, 1, c); }
+}
+function onString(x, y, art, dx, dy, t, ph = 0) {   // balloon-style: bobbing art tied to the stern
+  const bx = Math.round(x + dx + Math.sin(t * 2 + ph) * 1.5), by = Math.round(y + dy + Math.sin(t * 2.6 + ph) * 1.2);
+  line(x, y - 1, bx, by, '#f3ead8', 1);
+  ctx.drawImage(art, bx - Math.floor(art.width / 2), by - art.height + 1);
+}
+const TAIL_DRAW = {
+  pennant: (x, y, t) => { pole(x, y, 20); flag(x, y - 20, 16, 10, (i, j) => j < 2 ? '#ffb8d0' : '#ff7aa8', t, 0.85); },
+  streamers: (x, y, t) => {
+    pole(x, y, 12);
+    ['#ff7aa8', '#ffd35c', '#5fd3f0'].forEach((c, k) => { for (let i = 1; i < 22; i++) rect(x - i, y - 12 + k * 3 + Math.round(Math.sin(t * 11 - i * 0.5 + k * 1.7) * 3 * i / 22), 1, 2, c); });
+  },
+  balloon: (x, y, t) => onString(x, y, TART.balloon, -8, -26, t),
+  pinwheel: (x, y, t, air) => { pole(x, y, 16); const a = TART[Math.floor(t * (air ? 20 : 9)) % 2 ? 'pin1' : 'pin0']; ctx.drawImage(a, x - 5, y - 22); },
+  windsock: (x, y, t) => { pole(x, y, 19); flag(x, y - 19, 18, 8, i => Math.floor(i / 4) % 2 ? '#ffffff' : '#ff9a3d', t, 0.5); },
+  daisy: (x, y, t) => {
+    const sw = Math.sin(t * 2.5) * 2.5;
+    for (let i = 0; i < 17; i++) { const xx = Math.round(x + sw * i / 17); rect(xx - 1, y - i, 3, 1, INK); rect(xx, y - i, 1, 1, '#4cc46a'); }
+    rect(Math.round(x + sw * 0.5) - 4, y - 9, 4, 2, '#4cc46a');
+    ctx.drawImage(TART.daisy, Math.round(x + sw) - 5, y - 27);
+  },
+  lolly: (x, y, t) => { pole(x, y, 15); ctx.drawImage(TART[Math.floor(t * 4) % 2 ? 'lolly1' : 'lolly0'], x - 5, y - 26); },
+  heart: (x, y, t) => onString(x, y, TART.heart, -8, -26, t),
+  bunch: (x, y, t) => { onString(x, y, TART.bballoon, -16, -24, t, 2); onString(x, y, TART.yballoon, -2, -28, t, 4); onString(x, y, TART.balloon, -9, -33, t); },
+  pirate: (x, y, t) => { pole(x, y, 26, '#8a5a3a'); flag(x, y - 26, 20, 14, (i, j) => { const c = SKULL[Math.min(7, j >> 1 | 0)][10 - Math.min(10, i >> 1)]; return c === 'w' ? '#ffffff' : c === 'k' ? '#2a1f3d' : '#3a3050'; }, t); },
+  pride: (x, y, t) => { pole(x, y, 24); flag(x, y - 24, 18, 12, (i, j) => RAINBOW[j >> 1], t); },
+  kite: (x, y, t) => {
+    const kx = Math.round(x - 34 + Math.sin(t * 1.5) * 2), ky = Math.round(y - 48 + Math.cos(t * 1.9) * 2);
+    line(x, y - 1, kx + 8, ky + 15, '#f3ead8', 4);
+    for (let k = 0; k < 5; k++) { const bx = kx + 6 - k * 4, by = ky + 17 + k * 4 + Math.round(Math.sin(t * 6 - k) * 2); rect(bx - 1, by - 1, 5, 4, INK); rect(bx, by, 3, 2, k % 2 ? '#ffd35c' : '#ff7aa8'); }
+    ctx.drawImage(TART.kite, kx, ky);
+  },
+  rod: (x, y, t) => {
+    const tx = x - 16, ty = y - 24;
+    line(x + 1, y, tx + 1, ty, INK); line(x - 1, y, tx - 1, ty, INK); line(x, y, tx, ty, '#a8703a');
+    const fy = Math.min(LANE - 3, ty + 34), fx = tx - 8 + Math.round(Math.sin(t * 3));
+    line(tx, ty, fx, fy, '#ffffff', 3);
+    const bb = fy + Math.round(Math.sin(t * 5));
+    rect(fx - 3, bb - 3, 6, 6, INK); rect(fx - 2, bb - 2, 4, 2, '#e8365f'); rect(fx - 2, bb, 4, 2, '#ffffff');
+  },
+  torch: (x, y, t) => {
+    rect(x - 1, y - 20, 4, 20, INK); rect(x, y - 19, 2, 19, '#c49a5a'); for (let i = 3; i < 19; i += 5) rect(x, y - i, 2, 1, '#8a5a3a');
+    rect(x - 3, y - 23, 8, 4, INK); rect(x - 2, y - 22, 6, 2, '#8a5a3a');
+    ctx.drawImage(TART['flame' + Math.floor(t * 12) % 3], x - 4, y - 33);
+  },
+  prop: (x, y, t, air) => {
+    pole(x, y, 16);
+    const L = Math.round(12 * Math.abs(Math.cos(t * (air ? 30 : 14)))), yy = y - 19;
+    rect(x - L - 1, yy - 1, L * 2 + 4, 4, INK); rect(x - L, yy, L, 2, '#e8365f'); rect(x + 2, yy, L, 2, '#ffd35c');
+    rect(x - 2, yy - 2, 6, 6, INK); rect(x - 1, yy - 1, 4, 4, '#5fd3f0');
+  },
+  rocket: (x, y, t) => {
+    const fl = 6 + Math.floor(Math.random() * 9);
+    for (let i = 0; i < fl; i++) { const th = i > fl - 4 ? 2 : 4; rect(x - 6 - i, y - 9 + (4 - th) / 2, 1, th, i < 3 ? '#fff6b8' : i < 7 ? '#ffd35c' : '#ff9a3d'); }
+    ctx.drawImage(TART.rocket, x - 6, y - 13);
+  },
+  star: (x, y, t) => {
+    onString(x, y, TART.star, -8, -26, t);
+    if (Math.floor(t * 3) % 3 === 0) { const sx = Math.round(x - 8 + Math.sin(t * 2) * 1.5) + 6, sy = Math.round(y - 26 + Math.sin(t * 2.6) * 1.2) - 14; rect(sx, sy - 2, 1, 5, '#ffffff'); rect(sx - 2, sy, 5, 1, '#ffffff'); }
+  },
+  parasol: (x, y, t) => { pole(x, y, 20); ctx.drawImage(TART.parasol, x - 13, y - 30 + Math.round(Math.sin(t * 3))); },
+  dragon: (x, y, t) => {
+    const hx = Math.round(x - 30 + Math.sin(t * 1.3) * 2), hy = Math.round(y - 48 + Math.cos(t * 1.7) * 2);
+    line(x, y - 1, hx + 7, hy + 10, '#f3ead8', 4);
+    for (let k = 9; k >= 0; k--) {
+      const sx = hx - 3 - k * 4, sy = hy + 4 + Math.round(Math.sin(t * 5 - k * 0.7) * 4);
+      rect(sx - 1, sy - 1, 5, 5, INK); rect(sx, sy, 3, 3, k % 2 ? '#ffd35c' : '#e8365f');
+    }
+    ctx.drawImage(TART.dhead, hx, hy);
+  },
+  jelly: (x, y, t) => {
+    const bx = Math.round(x - 8 + Math.sin(t * 2) * 1.5), by = Math.round(y - 32 + Math.sin(t * 2.6) * 1.2), pulse = Math.floor(t * 3) % 2;
+    line(x, y - 1, bx, by + 10, '#f3ead8', 1);
+    for (let k = 0; k < 4; k++) for (let i = 0; i < 12; i++) rect(bx - 5 + k * 3 + Math.round(Math.sin(t * 6 + i * 0.6 + k) * 1.2), by + 8 + i, 1, 1, (i >> 1) % 2 ? '#c9a2ff' : '#ff9fd8');
+    const a = TART[pulse ? 'jelly1' : 'jelly0']; ctx.drawImage(a, bx - Math.floor(a.width / 2), by + 10 - a.height);
+  },
+};
+function drawTail(id, f, x, y, air) {
+  const it = ITEM[id];
+  if (!it) return;
+  if (id === 'tail-wings') return drawWings(f, x, y, air);
+  if (it.t) TAIL_DRAW[it.t](x + TAIL_AT[f][0], y + TAIL_AT[f][1], animT, air);
 }
 
 const POST_ART = POSTS.map((POST, k) => {    // red & white channel marker; day-mark green / yellow / red by height
@@ -1008,7 +1185,7 @@ function hearts(x, y, n, spread = 60) {
   for (let i = 0; i < n; i++) particles.push({ kind: 'heart', x: x + (Math.random() * 2 - 1) * spread, y: y + Math.random() * 20, vx: (Math.random() * 2 - 1) * 12, vy: -25 - Math.random() * 30, life: 1.4 + Math.random() * 1.0, age: 0, ph: Math.random() * 6 });
 }
 
-const WAKE_ICON = {
+const WAKE_ICON_SM = {
   heart: [MINI_HEART],
   star: [pixelArt(['..y..', '.yyy.', 'yyyyy', '.yyy.', '.y.y.'], { y: '#ffe066' })],
   note: [pixelArt(['.ww.', '.w.w', '.w..', 'ww..', 'ww..'], { w: '#ffffff' })],
@@ -1019,13 +1196,15 @@ const WAKE_ICON = {
   fly: [pixelArt(['pp.pp', 'ppkpp', '.pkp.'], { p: '#c9a2ff', k: '#2a1f3d' }), pixelArt(['.pkp.', '.pkp.', '..k..'], { p: '#c9a2ff', k: '#2a1f3d' })],
   coin: [pixelArt(['.yy.', 'yhyy', 'yyyy', '.yy.'], { y: '#ffc23d', h: '#fff6b8' }), pixelArt(['.y.', 'yhy', 'yyy', '.y.'], { y: '#ffc23d', h: '#fff6b8' }), pixelArt(['y', 'h', 'y', 'y'], { y: '#e0a020', h: '#fff6b8' })],
 };
+const WAKE_ICON = {};   // in-game wake icons are drawn 2x; the shop swatch keeps the small ones
+for (const k in WAKE_ICON_SM) WAKE_ICON[k] = WAKE_ICON_SM[k].map(im => scaled(im));
 function wakeFx(fx, wx) {
   const r = Math.random;
-  if (fx.k === 'spark') particles.push({ kind: 'spark', x: wx - r() * 10, y: LANE - 4 - r() * 14, vx: -speed * 0.45, vy: -10 - r() * 20, life: 0.35 + r() * 0.3, age: 0, c: fx.c[Math.floor(r() * fx.c.length)], s: r() < 0.4 ? 2 : 1, drag: false });
-  else if (fx.k === 'bubble') particles.push({ kind: 'bubble', x: wx - r() * 6, y: LANE - 2, vx: -speed * 0.4, vy: -18 - r() * 22, life: 0.7 + r() * 0.4, age: 0, ph: r() * 6, s: r() < 0.5 ? 1 : 2 });
-  else if (fx.k === 'icon') particles.push({ kind: 'icon', imgs: WAKE_ICON[fx.img], mv: fx.mv, x: wx - r() * 8, y: LANE - 4 - r() * 4, vx: 0, drift: -speed * 0.4, vy: fx.mv === 'rise' ? -22 - r() * 20 : -55 - r() * 45, life: fx.mv === 'rise' ? 0.8 + r() * 0.3 : 1.3, age: 0, ph: r() * 6 });
+  if (fx.k === 'spark') particles.push({ kind: 'spark', x: wx - r() * 10, y: LANE - 4 - r() * 14, vx: -speed * 0.45, vy: -10 - r() * 20, life: 0.35 + r() * 0.3, age: 0, c: fx.c[Math.floor(r() * fx.c.length)], s: r() < 0.4 ? 4 : 2, drag: false });
+  else if (fx.k === 'bubble') particles.push({ kind: 'bubble', x: wx - r() * 6, y: LANE - 2, vx: -speed * 0.4, vy: -18 - r() * 22, life: 0.7 + r() * 0.4, age: 0, ph: r() * 6, s: r() < 0.5 ? 2 : 4 });
+  else if (fx.k === 'icon') particles.push({ kind: 'icon', imgs: WAKE_ICON[fx.img], mv: fx.mv, x: wx - r() * 10, y: LANE - 6 - r() * 6, vx: 0, drift: -speed * 0.4, vy: fx.mv === 'rise' ? -22 - r() * 20 : -55 - r() * 45, life: fx.mv === 'rise' ? 0.8 + r() * 0.3 : 1.3, age: 0, ph: r() * 6 });
   else if (fx.k === 'confetti') particles.push({ kind: 'confetti', mv: 'flutter', c: RAINBOW[Math.floor(r() * RAINBOW.length)], x: wx - r() * 8, y: LANE - 3, vx: 0, drift: -speed * 0.4, vy: -60 - r() * 50, life: 1.3, age: 0, ph: r() * 6 });
-  else if (fx.k === 'ember') particles.push({ kind: 'ember', x: wx - r() * 6, y: LANE - 2 - r() * 4, vx: -speed * 0.4 - r() * 20, vy: -35 - r() * 45, life: 0.4 + r() * 0.35, age: 0, s: r() < 0.3 ? 2 : 1 });
+  else if (fx.k === 'ember') particles.push({ kind: 'ember', x: wx - r() * 6, y: LANE - 2 - r() * 4, vx: -speed * 0.4 - r() * 20, vy: -35 - r() * 45, life: 0.4 + r() * 0.35, age: 0, s: r() < 0.3 ? 4 : 2 });
 }
 const EMBER = ['#fff6b8', '#ffd35c', '#ffa64d', '#ff5c3a', '#a8344a'];
 function die() {
@@ -1118,8 +1297,8 @@ function update(dt) {
       wakeT += state === 'play' ? 0.025 : 0.05;
       const rb = streak >= 3 && state === 'play';
       const c = rb ? RAINBOW[Math.floor(Math.random() * RAINBOW.length)] : wk.spray[Math.floor(Math.random() * wk.spray.length)];
-      particles.push({ x: wx + Math.random() * 4, y: LANE + 1, vx: -speed * 0.35 - Math.random() * 40, vy: -20 - Math.random() * 70,
-        life: 0.3 + Math.random() * 0.25, age: 0, c, s: Math.random() < 0.25 ? 2 : 1 });
+      particles.push({ x: wx + Math.random() * 6, y: LANE + 1, vx: -speed * 0.35 - Math.random() * 60, vy: -30 - Math.random() * 110,
+        life: 0.35 + Math.random() * 0.3, age: 0, c, s: Math.random() < 0.3 ? 4 : 2 });
       if (wk.fx && Math.random() < wk.fx.p) wakeFx(wk.fx, wx);
       if (eqNow.ski === 'ski-gold' && Math.random() < 0.04) { const h = PIX.hull[playerFrame()], q = h[Math.floor(Math.random() * h.length)]; sparkle(PX + q.x, playerTop() + q.y, 1, ['#fff6b8', '#ffffff']); }
       if (eqNow.hair === 'hair-unicorn' && Math.random() < 0.03) { const h = PIX.hair[playerFrame()], q = h[Math.floor(Math.random() * h.length)]; sparkle(PX + q.x, playerTop() + q.y, 1, RAINBOW); }
@@ -1132,7 +1311,9 @@ function update(dt) {
       }
     }
   }
-  if (P.airborne && eqNow.decal === 'decal-wings' && Math.random() < 0.5) sparkle(PX + WING_AT[2][0] - 6, playerTop() + WING_AT[2][1] - 8, 1, ['#ffffff', '#ffb8d0']);
+  if (eqNow.tail === 'tail-rocket' && state !== 'dead' && Math.random() < 0.6) { const f = playerFrame(), r = Math.random; particles.push({ kind: 'ember', x: PX + TAIL_AT[f][0] - 14, y: playerTop() + TAIL_AT[f][1] - 9 + r() * 3, vx: -speed * 0.4 - 50 - r() * 40, vy: (r() - 0.5) * 24, life: 0.25 + r() * 0.2, age: 0, s: r() < 0.4 ? 4 : 2 }); }
+  if (eqNow.tail === 'tail-torch' && state !== 'dead' && Math.random() < 0.15) { const f = playerFrame(); particles.push({ kind: 'ember', x: PX + TAIL_AT[f][0] + 1, y: playerTop() + TAIL_AT[f][1] - 30, vx: -speed * 0.3 - 10, vy: -25 - Math.random() * 20, life: 0.4, age: 0, s: 2 }); }
+  if (P.airborne && eqNow.tail === 'tail-wings' && Math.random() < 0.5) sparkle(PX + WING_AT[2][0] - 6, playerTop() + WING_AT[2][1] - 8, 1, ['#ffffff', '#ffb8d0']);
   for (const p of particles) {
     p.age += dt;
     if (p.kind === 'spark') { if (p.drag !== false) { p.vx *= Math.exp(-3 * dt); p.vy *= Math.exp(-3 * dt); } }
@@ -1149,7 +1330,7 @@ function update(dt) {
   }
   for (const p of particles) if (p.kind === 'rocket' && p.age >= p.life && !p.done) {   // firework bursts
     p.done = true;
-    for (let i = 0; i < 18; i++) { const a = i / 18 * Math.PI * 2, v = 55 + Math.random() * 25; particles.push({ kind: 'spark', x: p.x, y: p.y, vx: Math.cos(a) * v + p.vx * 0.6, vy: Math.sin(a) * v, life: 0.5 + Math.random() * 0.3, age: 0, c: i % 3 ? p.c : '#ffffff', s: 1 }); }
+    for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2, v = 75 + Math.random() * 35; particles.push({ kind: 'spark', x: p.x, y: p.y, vx: Math.cos(a) * v + p.vx * 0.6, vy: Math.sin(a) * v, life: 0.5 + Math.random() * 0.3, age: 0, c: i % 3 ? p.c : '#ffffff', s: 2 }); }
   }
   particles = particles.filter(p => p.age < p.life && p.y < LANE + 12);
   for (const p of popups) p.age += dt;
@@ -1291,7 +1472,7 @@ function look() {   // what she's wearing; in the shop, the selected item is pre
 }
 function drawPlayer() {
   const f = playerFrame(), eq = look(), x = PX, y = playerTop();
-  if (eq.decal === 'decal-wings') drawWings(f, x, y, P.airborne);
+  drawTail(eq.tail, f, x, y, P.airborne);
   ctx.drawImage(tintedPlayer(eq), f * FW, 0, FW, FH, x, y, FW, FH);
   const dl = decalLayer(eq.decal);
   if (dl) ctx.drawImage(dl, f * FW, 0, FW, FH, x, y, FW, FH);
@@ -1308,14 +1489,14 @@ function drawParticles() {
       continue;
     }
     if (p.kind === 'ember') { ctx.fillStyle = EMBER[Math.min(4, Math.floor(p.age / p.life * 5))]; ctx.fillRect(Math.round(p.x), Math.round(p.y), p.s, p.s); continue; }
-    if (p.kind === 'confetti') { ctx.fillStyle = p.c; const fl = Math.floor(p.age * 10 + p.ph) % 2; ctx.fillRect(Math.round(p.x), Math.round(p.y), fl ? 2 : 1, fl ? 1 : 2); continue; }
-    if (p.kind === 'rocket') { ctx.fillStyle = p.c; ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 2); continue; }
+    if (p.kind === 'confetti') { ctx.fillStyle = p.c; const fl = Math.floor(p.age * 10 + p.ph) % 2; ctx.fillRect(Math.round(p.x), Math.round(p.y), fl ? 4 : 2, fl ? 2 : 4); continue; }
+    if (p.kind === 'rocket') { ctx.fillStyle = p.c; ctx.fillRect(Math.round(p.x), Math.round(p.y), 2, 4); continue; }
     if (p.kind === 'bubble') {
       const x = Math.round(p.x), y = Math.round(p.y), r = p.s;
       ctx.fillStyle = '#e9fcf9';
       ctx.fillRect(x - r, y - r - 1, r * 2 + 1, 1); ctx.fillRect(x - r, y + r + 1, r * 2 + 1, 1);
       ctx.fillRect(x - r - 1, y - r, 1, r * 2 + 1); ctx.fillRect(x + r + 1, y - r, 1, r * 2 + 1);
-      ctx.fillStyle = '#ffffff'; ctx.fillRect(x - r + 1, y - r + 1, 1, 1);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(x - r + 1, y - r + 1, r > 2 ? 2 : 1, r > 2 ? 2 : 1);
       continue;
     }
     ctx.fillStyle = p.c;
@@ -1383,8 +1564,10 @@ const pageOf = id => Math.max(0, Math.floor(SHOP[shopTab].items.findIndex(it => 
 const shopPages = () => Math.max(1, Math.ceil(SHOP[shopTab].items.length / PER_PAGE));
 function shopLayout() {
   const L = { tabs: [], tiles: [] }, x0 = 8, w = VW - 16;
-  const tabW = Math.floor((w - 8) / 3);
-  SLOTS.forEach((k, i) => L.tabs.push({ k, x: x0 + 4 + (i % 3) * tabW, y: 42 + Math.floor(i / 3) * 18, w: tabW - 2, h: 16 }));
+  SLOTS.forEach((k, i) => {   // 4 jet ski tabs, then 3 rider tabs
+    const row = i < 4 ? 0 : 1, n = row ? 3 : 4, tabW = Math.floor((w - 8) / n);
+    L.tabs.push({ k, x: x0 + 4 + (row ? i - 4 : i) * tabW, y: 42 + row * 18, w: tabW - 2, h: 16 });
+  });
   const tw = Math.floor((w - 16) / 3), th = 46;
   SHOP[shopTab].items.slice(shopPage * PER_PAGE, (shopPage + 1) * PER_PAGE)
     .forEach((it, i) => L.tiles.push({ it, x: x0 + 4 + (i % 3) * (tw + 4), y: 82 + Math.floor(i / 3) * (th + 4), w: tw, h: th }));
@@ -1435,7 +1618,7 @@ function iconCanvas(it) {
   const HULL_ROWS = y => y < 3 ? 0 : y < 11 ? 2 : y < 13 ? 1 : 5;
   const hullSwatch = p => { for (let y = 0; y < 16; y++) for (let x = 0; x < 30; x++) { const s = HULL_ROWS(y), base = hexRgb(HULL_COLS[s]); px(x, y, p ? shiftRgb(base, p(29 - x + 4, y, s)) : base); } };
   if (it.slot === 'ski') hullSwatch(it.p);
-  else if (it.slot === 'decal') { hullSwatch(null); if (it.art) { const a = DECAL_ART[it.art]; g.drawImage(a, 15 - Math.floor(a.width / 2), 8 - Math.floor(a.height / 2)); } }
+  else if (it.slot === 'decal') { hullSwatch(null); if (it.art) { const a = DECAL_SM[it.art]; g.drawImage(a, 15 - Math.floor(a.width / 2), 8 - Math.floor(a.height / 2)); } }
   else if (it.slot === 'suit') {
     for (let y = 0; y < 16; y++) for (let x = 0; x < 30; x++) {
       if (x < 17) { const s = it.vp ? it.vp(x, y) : it.vest, base = hexRgb(y < 2 ? VEST_COLS[1] : VEST_COLS[0]); px(x, y, s ? shiftRgb(base, s) : base); }
@@ -1448,11 +1631,12 @@ function iconCanvas(it) {
       px(x, y, it.a || it.g ? hairRgb(it, s, y / 15) : hexRgb(s ? HAIR_B[0] : HAIR_A[0]));
     }
   }
+  else if (it.slot === 'tail') { g.fillStyle = '#9ee4ff'; g.fillRect(0, 0, 30, 16); g.fillStyle = '#c9f3ff'; g.fillRect(0, 0, 30, 4); }
   else if (it.slot === 'wake') {
     g.fillStyle = '#2b93a1'; g.fillRect(0, 0, 30, 16); g.fillStyle = '#5fc7c3'; g.fillRect(0, 12, 30, 1);
     it.spray.slice(0, 6).forEach((col, i) => { g.fillStyle = col; g.fillRect(2 + (i * 5) % 14, 9 - (i % 2) * 4 - (i % 3), 2, 2); });
     const fx = it.fx;
-    if (fx && fx.k === 'icon') { const im = WAKE_ICON[fx.img][0]; g.drawImage(im, 22 - Math.floor(im.width / 2), 7 - Math.floor(im.height / 2)); if (fx.img !== 'fly') g.drawImage(im, 18 - Math.floor(im.width / 2), 2); }
+    if (fx && fx.k === 'icon') { const im = WAKE_ICON_SM[fx.img][0]; g.drawImage(im, 22 - Math.floor(im.width / 2), 7 - Math.floor(im.height / 2)); if (fx.img !== 'fly') g.drawImage(im, 18 - Math.floor(im.width / 2), 2); }
     else if (fx && fx.k === 'bubble') { g.strokeStyle = '#e9fcf9'; g.lineWidth = 1; g.strokeRect(19.5, 4.5, 4, 4); g.strokeRect(24.5, 1.5, 3, 3); }
     else if (fx && (fx.k === 'spark' || fx.k === 'ember' || fx.k === 'confetti')) {
       const cols = fx.k === 'ember' ? EMBER : fx.k === 'confetti' ? RAINBOW : fx.c;
@@ -1465,10 +1649,12 @@ function iconCanvas(it) {
 }
 function drawIcon(it, x, y) {
   ctx.drawImage(iconCanvas(it), x, y);
-  if (!it.leg) return;
+  if (!it.leg && !it.t) return;
   ctx.save(); ctx.beginPath(); ctx.rect(x, y, 30, 16); ctx.clip();
+  if (it.t) TAIL_DRAW[it.t](x + 20 + (it.ix || 0), y + 15 + (it.iy || 0), animT, false);
   if (it.id === 'ski-gold') { const s = (animT % 1.8) / 1.8 * 60 - 15; for (let yy = 0; yy < 16; yy++) for (let d = 0; d < 3; d++) { ctx.fillStyle = d ? '#fff6b8' : '#ffffff'; ctx.fillRect(Math.round(x + s - yy * 0.7 + d), y + yy, 1, 1); } }
-  else if (it.id === 'decal-wings') { rect(x, y, 30, 16, '#4147b1'); rect(x, y, 30, 3, '#6084e9'); ctx.drawImage(WINGS[FLAP[Math.floor(animT * 6) % FLAP.length]], x, y - 14); }
+  else if (it.id === 'tail-wings') ctx.drawImage(WINGS[FLAP[Math.floor(animT * 6) % FLAP.length]], x, y - 14);
+  else if (it.id === 'decal-holo') { const a = HOLO[Math.floor(animT * 10) % 12].sm; ctx.drawImage(a, x + 15 - Math.floor(a.width / 2), y + 8 - Math.floor(a.height / 2)); }
   else if (it.id === 'suit-galaxy') { for (let i = 0; i < 14; i++) { const r = hash(i, 7), tw = Math.sin(animT * 5 + r * 90); if (tw > -0.3) rect(x + (i * 7) % 17, y + (i * 5) % 16, 1, 1, tw > 0.55 ? '#ffffff' : '#b9a8ff'); } }
   else if (it.id === 'hair-unicorn') { for (let yy = 0; yy < 16; yy++) for (let xx = 0; xx < 30; xx++) { const s = (xx + Math.floor(yy / 5)) % 4 === 0 ? 1 : 0; ctx.fillStyle = UNI[Math.floor((((yy / 15) * 320 - animT * 150) % 360 + 360) % 360 / 10)][s]; ctx.fillRect(x + xx, y + yy, 1, 1); } }
   else if (it.id === 'wake-fireworks') {
