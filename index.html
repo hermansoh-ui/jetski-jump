@@ -367,15 +367,27 @@ const SHOP = {
     { id: 'wake-fireworks', name: 'FIREWORKS', price: LEG, spray: ['#ffffff', '#c9f3f0'], leg: true },
   ] },
   hat: { label: 'HATS', items: [] },
+  env: { label: 'WORLD', items: [   // whole scene: sky, sea, islands, weather (see ENV below)
+    { id: 'env-dreamy', name: 'DREAMY', price: 0 },
+    { id: 'env-sunset', name: 'SUNSET', price: 500 },
+    { id: 'env-tropic', name: 'TROPICAL', price: 800 },
+    { id: 'env-sakura', name: 'SAKURA', price: 1000 },
+    { id: 'env-night', name: 'NIGHT', price: 1200 },
+    { id: 'env-arctic', name: 'ARCTIC', price: 1500 },
+    { id: 'env-candy', name: 'CANDY LAND', price: 2000 },
+    { id: 'env-storm', name: 'STORM', price: 2500 },
+    { id: 'env-aurora', name: 'AURORA', price: 3000 },
+    { id: 'env-galaxy', name: 'GALAXY', price: 5000, leg: true },
+  ] },
 };
-const SLOTS = ['ski', 'decal', 'tail', 'wake', 'suit', 'hair', 'hat'];   // shop tabs: jet ski row of 4, rider row of 3
+const SLOTS = ['ski', 'decal', 'tail', 'wake', 'suit', 'hair', 'hat', 'env'];   // shop tabs: jet ski row of 4, rider + world row of 4
 const ITEM = {};
 for (const s of SLOTS) for (const it of SHOP[s].items) { it.slot = s; ITEM[it.id] = it; }
 for (const s of SLOTS) for (const t in TIER_RANGE) {   // spread each tier's items cheapest to dearest in list order
   const its = SHOP[s].items.filter(it => it.price === +t), [lo, hi, step] = TIER_RANGE[t];
   its.forEach((it, i) => { it.price = Math.round((lo + (hi - lo) * (its.length > 1 ? i / (its.length - 1) : 0)) / step) * step; });
 }
-const DEFAULT_EQ = { ski: 'ski-blue', decal: 'decal-none', tail: 'tail-none', suit: 'suit-teal', hair: 'hair-natural', wake: 'wake-classic', hat: null };
+const DEFAULT_EQ = { ski: 'ski-blue', decal: 'decal-none', tail: 'tail-none', suit: 'suit-teal', hair: 'hair-natural', wake: 'wake-classic', hat: null, env: 'env-dreamy' };
 const RENAMED = { 'decal-wings': 'tail-wings' };   // v11: wings moved from the decal tab to the tail tab
 const FREE = Object.values(DEFAULT_EQ).filter(Boolean);
 // v7/v8 prices, refunded down to the new ones once
@@ -1044,14 +1056,45 @@ function rockVisGap(o, f, top) {   // smallest drawn-pixel gap between jet ski f
 
 // ---------- scenery ----------
 function bandEdges(y0, y1, n, pow) { const e = []; for (let i = 0; i <= n; i++) e.push(Math.round(y0 + (y1 - y0) * Math.pow(i / n, pow))); return e; }
-const SKY = ['#b9a8ec', '#c4aeea', '#d0b4e6', '#dcbbdf', '#e8c3d6', '#f2cbcb', '#f9d3c0', '#ffdbb4'];
-const SEA_FAR = ['#a8e6df', '#8fdcd5', '#76d2cc', '#5fc7c3', '#4cbbba', '#3eafb2', '#33a2aa'];
-const SEA_NEAR = ['#2b93a1', '#248598', '#1e768c', '#196882'];
+// each world: 8 sky bands, 7 far + 4 near sea bands, crest/foam colours, sun/clouds/island treatment and an animated extra
+const ENV = {
+  'env-dreamy': { sky: ['#b9a8ec', '#c4aeea', '#d0b4e6', '#dcbbdf', '#e8c3d6', '#f2cbcb', '#f9d3c0', '#ffdbb4'],
+    far: ['#a8e6df', '#8fdcd5', '#76d2cc', '#5fc7c3', '#4cbbba', '#3eafb2', '#33a2aa'], near: ['#2b93a1', '#248598', '#1e768c', '#196882'],
+    lane: '#2f9fa8', crest: ['#d6f6f1', '#e9fcf9', '#7fd0cf'], hz: '#e9fcf9', foam: ['#d9f7f2', '#ffffff', '#bdeee9'], sun: 'sun' },
+  'env-sunset': { sky: ['#4a2a6a', '#6a2f78', '#94397a', '#c24a72', '#e8626a', '#f8845e', '#ffaa5c', '#ffcf73'],
+    far: ['#ffb27a', '#f2927a', '#d8787e', '#b86482', '#965684', '#784a80', '#5e3e78'], near: ['#4e3672', '#422e66', '#37285a', '#2c214c'],
+    lane: '#6a4a86', crest: ['#ffe2a8', '#ffc98a', '#c27aa8'], hz: '#ffe9b0', foam: ['#ffd6c0', '#ffe9d8', '#d9a0c0'], sun: 'bigsun', cloud: sh(345, 1.1, 0.95), island: 'silhouette', isl: sh(285, 0.5, 0.3) },
+  'env-tropic': { sky: ['#3fa0ef', '#4aaaf0', '#58b4f2', '#68bef4', '#7ac8f5', '#8ed2f6', '#a4dcf7', '#bce6f8'],
+    far: ['#9ff0e6', '#7ae8e0', '#52dcd8', '#33ccd0', '#22b8c8', '#1aa4be', '#1690b2'], near: ['#127fa4', '#0f7096', '#0c6288', '#0a557a'],
+    lane: '#1aa0bc', crest: ['#e2fffb', '#ffffff', '#7ae0e8'], hz: '#ffffff', foam: ['#e2fffb', '#ffffff', '#bdf4f2'], sun: 'sun', island: 'palms' },
+  'env-sakura': { sky: ['#f4b8d4', '#f6bfd8', '#f8c6dc', '#f9cde0', '#fbd4e3', '#fcdbe6', '#fde2e9', '#fee9ec'],
+    far: ['#c8ecf0', '#b2e2ea', '#9cd6e2', '#88cadb', '#76bed4', '#66b2cc', '#58a6c4'], near: ['#4c98b8', '#428aac', '#3a7da0', '#327094'],
+    lane: '#5aa4c2', crest: ['#ffe4ef', '#ffffff', '#a8d4e4'], hz: '#ffffff', foam: ['#ffe9f2', '#ffffff', '#cbe6ee'], sun: 'paleSun', cloud: sh(335, 0.6, 1.05), island: 'blossom', fx: 'petals' },
+  'env-night': { sky: ['#0c0f2e', '#111638', '#161d44', '#1c2550', '#232e5c', '#2b3868', '#344374', '#3e4f80'],
+    far: ['#3a5784', '#324d7a', '#2b4370', '#253a66', '#1f325c', '#1a2b52', '#152448'], near: ['#121f40', '#0f1a38', '#0c1630', '#0a1228'],
+    lane: '#2a4270', crest: ['#fff2b0', '#c8d8ff', '#5a74a8'], hz: '#8ea4d8', foam: ['#a8bce8', '#d8e4ff', '#6a84b8'], sun: 'moon', cloud: sh(230, 0.5, 0.45), island: 'lighthouse', isl: sh(235, 0.5, 0.35), fx: 'stars' },
+  'env-arctic': { sky: ['#8fbfe8', '#9cc7eb', '#a9cfee', '#b6d7f0', '#c3def2', '#d0e6f4', '#dcedf6', '#e8f3f8'],
+    far: ['#c4e4f0', '#acd6ea', '#94c8e2', '#7ebada', '#6aacd0', '#589ec6', '#4890bc'], near: ['#3e82ae', '#36749e', '#2f6890', '#285c82'],
+    lane: '#5a9cc6', crest: ['#ffffff', '#ffffff', '#9ccce4'], hz: '#ffffff', foam: ['#eef8ff', '#ffffff', '#c8e4f2'], sun: 'paleSun', cloud: sh(210, 0.3, 1.1), island: 'ice', fx: 'snow' },
+  'env-candy': { sky: ['#ff9ccf', '#ffa8d2', '#ffb4d4', '#ffc0d4', '#ffcbd2', '#ffd6cf', '#ffe0cb', '#ffeac8'],
+    far: ['#c8f4e4', '#b0eedc', '#98e6d4', '#82dcce', '#6ed0c8', '#5cc4c2', '#4cb6bc'], near: ['#ff8fbf', '#f27ab2', '#e266a4', '#d05496'],
+    lane: '#ffb0d0', crest: ['#ffffff', '#ffffff', '#ffd0e6'], hz: '#ffffff', foam: ['#ffffff', '#ffffff', '#ffd6ea'], sun: 'sun', cloud: sh(330, 0.9, 1.15), island: 'candy', fx: 'sprinkles' },
+  'env-storm': { sky: ['#3a4250', '#424a58', '#4a5262', '#535b6a', '#5c6474', '#666e7c', '#707886', '#7a8290'],
+    far: ['#6a7e84', '#5e7278', '#53676e', '#495c64', '#40525a', '#384850', '#303f48'], near: ['#2a3840', '#243038', '#1f2a32', '#1a242c'],
+    lane: '#4a5c64', crest: ['#c8d4d8', '#e0e8ea', '#6e8088'], hz: '#a8b4b8', foam: ['#b8c6ca', '#e4ecee', '#8a9ca2'], cloud: sh(220, 0.15, 0.55), clouds2: true, island: 'silhouette', isl: sh(200, 0.3, 0.45), fx: 'storm' },
+  'env-aurora': { sky: ['#06121e', '#081a28', '#0b2232', '#0e2a3a', '#123242', '#163a4a', '#1b4252', '#214a5a'],
+    far: ['#2a5a6a', '#245262', '#1f4a5a', '#1a4252', '#163a4a', '#123242', '#0f2a3a'], near: ['#0c2432', '#0a1e2a', '#081824', '#06141e'],
+    lane: '#1f4a5a', crest: ['#9cffd8', '#c8fff0', '#3a7a8a'], hz: '#7affc8', foam: ['#7ad8c0', '#c8fff0', '#3a8a8a'], sun: 'moon', cloud: null, island: 'ice', isl: sh(195, 0.6, 0.55), fx: 'aurora' },
+  'env-galaxy': { sky: ['#0a0420', '#14062e', '#1e0a3c', '#2a0e4a', '#381258', '#481664', '#5a1c70', '#6e247a'],
+    far: ['#7a3a9a', '#6a3290', '#5a2a84', '#4c2478', '#3e1e6a', '#32185c', '#28144e'], near: ['#221044', '#1c0d3a', '#170a30', '#120826'],
+    lane: '#5a2a84', crest: ['#ffc8ff', '#ffffff', '#9a5ac8'], hz: '#ffb8ff', foam: ['#e0a8ff', '#ffffff', '#a070d0'], sun: 'planet', cloud: null, island: 'float', isl: sh(290, 1.1, 1.25), fx: 'galaxy' },
+};
+let E = ENV['env-dreamy'], envId = 'env-dreamy';
 let seaBands = [];
 function rng(seed) { return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
 function buildSea() {
   seaBands = [];
-  const r = rng(7);
+  const r = rng(7), SEA_FAR = E.far, SEA_NEAR = E.near;
   const far = bandEdges(HORIZON, LANE, SEA_FAR.length, 1.55);
   const near = bandEdges(LANE + 4, VH, SEA_NEAR.length, 1);
   const add = (y0, y1, col, f, crestCol, maxLen) => {
@@ -1062,10 +1105,10 @@ function buildSea() {
   };
   for (let i = 0; i < SEA_FAR.length; i++) {
     const t = (i + 0.5) / SEA_FAR.length;
-    add(far[i], far[i + 1], SEA_FAR[i], 0.08 + 0.8 * Math.pow(t, 1.4), i < 3 ? '#d6f6f1' : '#e9fcf9', 2 + Math.floor(t * 10));
+    add(far[i], far[i + 1], SEA_FAR[i], 0.08 + 0.8 * Math.pow(t, 1.4), i < 3 ? E.crest[0] : E.crest[1], 2 + Math.floor(t * 10));
   }
-  seaBands.push({ y0: LANE, y1: LANE + 4, col: '#2f9fa8', f: 1, crests: [], P: 1 });
-  for (let i = 0; i < SEA_NEAR.length; i++) add(near[i], near[i + 1], SEA_NEAR[i], 1.15 + i * 0.12, '#7fd0cf', 12);
+  seaBands.push({ y0: LANE, y1: LANE + 4, col: E.lane, f: 1, crests: [], P: 1 });
+  for (let i = 0; i < SEA_NEAR.length; i++) add(near[i], near[i + 1], SEA_NEAR[i], 1.15 + i * 0.12, E.crest[2], 12);
 }
 const clouds = [
   { k: 'cloud0', x: 30, y: 62, f: 0.05 }, { k: 'cloud1', x: 170, y: 100, f: 0.035 },
@@ -1392,17 +1435,110 @@ function disc(cx, cy, r, c) {
 }
 function mod(a, n) { return ((a % n) + n) % n; }
 
+function tintCanvas(src, sft) {   // hue/lightness shift of a sprite, keeping its shading
+  const c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d'); g.drawImage(src, 0, 0);
+  const id = g.getImageData(0, 0, c.width, c.height), d = id.data;
+  for (let i = 0; i < d.length; i += 4) if (d[i + 3]) { const o = shiftRgb([d[i], d[i + 1], d[i + 2]], sft); d[i] = o[0]; d[i + 1] = o[1]; d[i + 2] = o[2]; }
+  g.putImageData(id, 0, 0);
+  return c;
+}
+function blob(g, cx, cy, r, col) { g.fillStyle = col; for (let y = -r; y <= r; y++) { const w = Math.round(Math.sqrt(r * r - y * y)); g.fillRect(cx - w, cy + y, w * 2 + 1, 1); } }
+function palm(g, x, base, h) {   // little palm tree for the island strip
+  g.fillStyle = '#6a4a2a'; for (let i = 0; i < h; i++) g.fillRect(x + Math.round(Math.sin(i / h * 1.4) * 2), base - i, 1, 1);
+  const tx = x + 2, ty = base - h;
+  g.fillStyle = '#2f8f4e'; for (const [dx, dy] of [[-4, 1], [-3, 0], [-2, -1], [-1, -1], [1, -1], [2, -1], [3, 0], [4, 1], [-5, 2], [5, 2], [0, -2]]) g.fillRect(tx + dx, ty + dy, 1, 1);
+  g.fillStyle = '#4cc46a'; for (const [dx, dy] of [[-2, 0], [-1, 0], [0, -1], [1, 0], [2, 0]]) g.fillRect(tx + dx, ty + dy, 1, 1);
+}
+const envArt = new Map();
+function envIsland(env) {   // the scrolling horizon strip for a world, built once
+  if (envArt.has(env)) return envArt.get(env);
+  const base = img.island, kind = ENV[env].island;
+  let c;
+  if (kind === 'ice' || kind === 'candy' || kind === 'float') {
+    c = document.createElement('canvas'); c.width = 170; c.height = kind === 'float' ? 60 : 34; const g = c.getContext('2d');
+    if (kind === 'ice') {
+      const berg = (x, w, h, pk) => { for (let i = 0; i < w; i++) { const u = i / w, hh = Math.round(h * Math.min(1, Math.min(u, 1 - u) * 2.4) * (0.75 + 0.25 * Math.sin(u * 9 + pk))); g.fillStyle = u < 0.45 ? '#ffffff' : '#cfe6f4'; g.fillRect(x + i, 34 - hh, 1, hh); g.fillStyle = '#9cc8e2'; g.fillRect(x + i, 33, 1, 1); } };
+      berg(4, 34, 22, 1); berg(44, 58, 30, 3); berg(110, 26, 14, 5); berg(140, 22, 18, 2);
+    } else if (kind === 'candy') {
+      blob(g, 30, 34, 18, '#ffb8d8'); blob(g, 30, 34, 14, '#ffd0e4'); blob(g, 82, 36, 24, '#bff0dc'); blob(g, 82, 36, 19, '#d8fff0'); blob(g, 140, 35, 16, '#fff0a8');
+      for (const [x, y] of [[20, 20], [36, 22], [74, 16], [92, 18], [134, 22], [148, 24]]) { g.fillStyle = ['#ff5c9a', '#5fd3f0', '#ffd35c', '#a98cff'][(x / 2 | 0) % 4]; g.fillRect(x, y, 2, 2); }
+      for (const x of [56, 118]) { for (let i = 0; i < 18; i++) { g.fillStyle = (i >> 1) % 2 ? '#ffffff' : '#e8365f'; g.fillRect(x, 34 - i, 2, 1); } g.fillStyle = '#e8365f'; g.fillRect(x + 2, 15, 3, 2); g.fillRect(x + 4, 17, 2, 2); }
+      blob(g, 104, 12, 5, '#ff7aa8'); g.fillStyle = '#ffffff'; g.fillRect(102, 10, 2, 2); g.fillRect(105, 13, 2, 1); g.fillStyle = '#f3ead8'; g.fillRect(104, 18, 1, 16);
+    } else {   // floating crystal islands
+      const isle = (x, y, w) => { const t = tintCanvas(base, ENV[env].isl); g.drawImage(t, 0, 0, Math.min(t.width, w * 2), t.height, x, y, w, t.height); for (let i = 0; i < w; i += 2) { const d = Math.round(6 * Math.sin(i / w * Math.PI)); g.fillStyle = '#3a1a5a'; g.fillRect(x + i, y + t.height - 2, 2, d); g.fillStyle = '#c87aff'; if (i % 6 === 0) g.fillRect(x + i, y + t.height - 2 + d, 1, 2); } };
+      isle(8, 6, 60); isle(96, 20, 54);
+    }
+  } else {
+    c = ENV[env].isl ? tintCanvas(base, ENV[env].isl) : (() => { const k = document.createElement('canvas'); k.width = base.width; k.height = base.height; k.getContext('2d').drawImage(base, 0, 0); return k; })();
+    if (kind === 'palms' || kind === 'blossom' || kind === 'lighthouse') {
+      const k = document.createElement('canvas'); k.width = c.width; k.height = c.height + 16; const g = k.getContext('2d'); g.drawImage(c, 0, 16);
+      if (kind === 'palms') for (const [x, h] of [[18, 14], [26, 11], [70, 15], [118, 12], [128, 15]]) palm(g, x, 22, h);
+      if (kind === 'blossom') for (const [x, r] of [[22, 6], [64, 8], [80, 5], [124, 7]]) { g.fillStyle = '#7a4a3a'; g.fillRect(x, 16, 2, 8); blob(g, x + 1, 13, r, '#ff9fc4'); blob(g, x, 12, r - 2, '#ffc2da'); }
+      if (kind === 'lighthouse') { const x = 96; for (let i = 0; i < 16; i++) { g.fillStyle = (i >> 2) % 2 ? '#e8365f' : '#f3ead8'; g.fillRect(x, 20 - i, 4, 1); } g.fillStyle = '#2a1f3d'; g.fillRect(x - 1, 2, 6, 3); }
+      c = k;
+    }
+  }
+  envArt.set(env, c);
+  return c;
+}
+const cloudArt = new Map();
+function envCloud(k) { const key = envId + k; if (!cloudArt.has(key)) cloudArt.set(key, E.cloud ? tintCanvas(img[k], E.cloud) : img[k]); return cloudArt.get(key); }
+let sunArt = null;
+function drawCelestial() {
+  const kind = E.sun, sx = VW - 62, sy = HORIZON - 92;
+  if (kind === 'sun') ctx.drawImage(img.sun, sx, sy);
+  else if (kind === 'paleSun') { blob(ctx, sx + 11, sy + 11, 13, 'rgba(255,255,255,0.35)'); blob(ctx, sx + 11, sy + 11, 10, '#fff6e0'); }
+  else if (kind === 'bigsun') {
+    const cx = VW - 70, cy = HORIZON - 6;
+    for (let y = -26; y <= 0; y++) { if (y > -12 && (y + 30) % 5 < 2) continue; const w = Math.round(Math.sqrt(26 * 26 - y * y)); rect(cx - w, cy + y, w * 2 + 1, 1, y < -16 ? '#ffe066' : y < -8 ? '#ffb84d' : '#ff8a4d'); }
+  }
+  else if (kind === 'moon') { blob(ctx, sx + 11, sy + 4, 11, '#fff6d0'); blob(ctx, sx + 16, sy + 1, 9, E.sky[1]); rect(sx + 3, sy + 6, 2, 2, '#e8dcae'); }
+  else if (kind === 'planet') {
+    const cx = VW - 60, cy = 70;
+    blob(ctx, cx, cy, 16, '#ff9a6a'); for (let y = -14; y < 16; y += 5) rect(cx - 15, cy + y, 31, 2, 'rgba(200,80,120,0.45)'); blob(ctx, cx - 5, cy - 6, 4, 'rgba(255,230,190,0.55)');
+    for (let i = -30; i <= 30; i++) { const y = Math.round(cy + i * 0.25 + 3), over = Math.abs(i) > 15 || i > 0; if (over) rect(cx + i, y, 1, 2, i % 3 ? '#ffd0f0' : '#c8a0ff'); }
+    blob(ctx, 46, 120, 5, '#8fdcff'); rect(43, 118, 3, 1, '#d8f4ff');
+  }
+}
+function twinkles(n, seed, maxY, cols) {
+  const r = rng(seed);
+  for (let i = 0; i < n; i++) { const x = Math.floor(r() * VW), y = Math.floor(r() * maxY), ph = r() * 9, tw = Math.sin(animT * 3 + ph);
+    if (tw > -0.4) rect(x, y, 1, 1, tw > 0.7 ? '#ffffff' : cols[i % cols.length]); if (tw > 0.93) { rect(x - 1, y, 3, 1, '#ffffff'); rect(x, y - 1, 1, 3, '#ffffff'); } }
+}
+function drawEnvBack() {   // animated sky extras, behind the sun and islands
+  const fx = E.fx;
+  if (fx === 'stars' || fx === 'aurora' || fx === 'galaxy') twinkles(fx === 'galaxy' ? 90 : 60, 11, HORIZON - 20, fx === 'galaxy' ? ['#ffc8ff', '#b9a8ff', '#8fdcff'] : ['#c8d8ff', '#fff2b0']);
+  if (fx === 'aurora') for (let b = 0; b < 3; b++) for (let x = 0; x < VW; x += 2) {
+    const y = Math.round(40 + b * 22 + Math.sin(x * 0.03 + animT * 0.8 + b * 2) * 14 + Math.sin(x * 0.07 - animT * 1.3) * 5), h = 18 + Math.round(Math.sin(x * 0.05 + animT + b) * 8);
+    for (let k = 0; k < h; k += 2) rect(x, y + k, 2, 2, b === 1 ? 'rgba(186,120,255,' + (0.28 * (1 - k / h)) + ')' : 'rgba(90,255,180,' + (0.32 * (1 - k / h)) + ')');
+  }
+  if (fx === 'galaxy') {
+    for (let i = 0; i < 40; i++) { const r = hash(i, 3), x = Math.round(r * VW), y = Math.round(80 + Math.sin(r * 12) * 30 + (hash(i, 9) - 0.5) * 50); rect(x, y, 3, 2, i % 2 ? 'rgba(255,120,220,0.18)' : 'rgba(120,160,255,0.18)'); }
+    const ph = animT % 4; if (ph < 0.5) { const x = VW - 40 - ph * 300, y = 30 + ph * 120; for (let k = 0; k < 12; k++) rect(x + k * 2, y - k, 2, 1, k < 3 ? '#ffffff' : 'rgba(255,200,255,' + (1 - k / 12) + ')'); }
+  }
+  if (fx === 'storm') { const ph = animT % 5.3; if (ph < 0.18) { rect(0, 0, VW, HORIZON, 'rgba(255,255,255,0.35)'); let x = 60 + Math.floor(hash(Math.floor(animT / 5.3), 1) * (VW - 120)); for (let y = 0; y < HORIZON - 30; y += 6) { const nx = x + (hash(y, x) < 0.5 ? -4 : 4); rect(Math.min(x, nx), y, Math.abs(nx - x) + 2, 6, '#fff6d0'); x = nx; } } }
+}
+function drawEnvFront() {   // weather over the whole scene
+  const fx = E.fx;
+  if (fx === 'petals') for (let i = 0; i < 26; i++) { const r = hash(i, 5), x = mod(r * 400 - animT * (20 + r * 20) - scroll * 0.3, VW + 10) - 5, y = mod(hash(i, 8) * VH + animT * (18 + r * 14), VH); rect(x + Math.sin(animT * 2 + i) * 4, y, 2, 1, i % 2 ? '#ff9fc4' : '#ffc2da'); }
+  if (fx === 'snow') for (let i = 0; i < 40; i++) { const r = hash(i, 6), x = mod(r * 400 - animT * 10 - scroll * 0.25, VW + 10) - 5, y = mod(hash(i, 2) * VH + animT * (25 + r * 25), VH); rect(x + Math.sin(animT * 1.5 + i) * 3, y, r < 0.3 ? 2 : 1, r < 0.3 ? 2 : 1, '#ffffff'); }
+  if (fx === 'sprinkles') for (let i = 0; i < 18; i++) { const r = hash(i, 4), x = mod(r * 400 - animT * 12 - scroll * 0.2, VW + 10) - 5, y = mod(hash(i, 7) * HORIZON + animT * 14, HORIZON); rect(x, y, i % 2 ? 2 : 1, i % 2 ? 1 : 2, RAINBOW[i % 6]); }
+  if (fx === 'storm') { ctx.fillStyle = 'rgba(200,215,230,0.45)'; for (let i = 0; i < 60; i++) { const r = hash(i, 12), x = mod(r * 500 - animT * 60 - scroll * 0.4, VW + 20) - 10, y = mod(hash(i, 13) * VH + animT * 300, VH); ctx.fillRect(Math.round(x), Math.round(y), 1, 6); } }
+}
 function drawSky() {
-  const e = bandEdges(0, HORIZON, SKY.length, 0.8);
+  const SKY = E.sky, e = bandEdges(0, HORIZON, SKY.length, 0.8);
   for (let i = 0; i < SKY.length; i++) rect(0, e[i], VW, e[i + 1] - e[i], SKY[i]);
-  ctx.drawImage(img.sun, VW - 62, HORIZON - 92);
-  for (const c of clouds) {
-    const im = img[c.k], span = VW + im.width + 40;
+  drawEnvBack();
+  drawCelestial();
+  if (E.cloud !== null) for (const c of E.clouds2 ? clouds.concat(clouds.map(q => ({ ...q, x: q.x + 90, y: q.y - 20, f: q.f * 1.3 }))) : clouds) {
+    const im = envCloud(c.k), span = VW + im.width + 40;
     const x = mod(c.x - scroll * c.f, span) - im.width - 20;
     ctx.drawImage(im, Math.round(x), c.y);
   }
-  const isl = img.island, span = isl.width + 170;
+  const isl = envIsland(envId), span = isl.width + 170;
   for (let x = mod(40 - scroll * 0.02, span) - span; x < VW; x += span) ctx.drawImage(isl, Math.round(x), HORIZON - isl.height + 3);
+  if (E.island === 'lighthouse' && Math.floor(animT * 1.5) % 2) for (let x = mod(40 - scroll * 0.02, span) - span; x < VW; x += span) { rect(x + 96, HORIZON - isl.height + 3 + 2, 4, 2, '#fff6b0'); rect(x + 76, HORIZON - isl.height + 5, 20, 1, 'rgba(255,246,176,0.5)'); }
 }
 function drawSea() {
   for (const b of seaBands) {
@@ -1414,9 +1550,9 @@ function drawSea() {
       for (let x = mod(c.x - off, b.P) - b.P; x < VW; x += b.P) ctx.fillRect(Math.round(x), c.y, c.len, 1);
     }
   }
-  rect(0, HORIZON, VW, 1, '#e9fcf9');
+  rect(0, HORIZON, VW, 1, E.hz);
   // waterline foam behind the player
-  ctx.fillStyle = '#d9f7f2';
+  ctx.fillStyle = E.foam[0];
   for (let x = mod(-scroll, 24) - 24; x < VW; x += 24) { ctx.fillRect(Math.round(x), LANE - 1, 14, 1); ctx.fillRect(Math.round(x) + 4, LANE, 18, 1); }
 }
 function drawDolphins() {
@@ -1433,9 +1569,9 @@ function drawDolphins() {
   }
 }
 function drawFrontFoam() {
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = E.foam[1];
   for (let x = mod(-scroll * 1.05 + 9, 30) - 30; x < VW; x += 30) ctx.fillRect(Math.round(x), LANE + 2, 9, 1);
-  ctx.fillStyle = '#bdeee9';
+  ctx.fillStyle = E.foam[2];
   for (let x = mod(-scroll * 1.05 + 20, 30) - 30; x < VW; x += 30) ctx.fillRect(Math.round(x), LANE + 3, 12, 1);
 }
 function drawObstacles() {
@@ -1564,8 +1700,8 @@ const pageOf = id => Math.max(0, Math.floor(SHOP[shopTab].items.findIndex(it => 
 const shopPages = () => Math.max(1, Math.ceil(SHOP[shopTab].items.length / PER_PAGE));
 function shopLayout() {
   const L = { tabs: [], tiles: [] }, x0 = 8, w = VW - 16;
-  SLOTS.forEach((k, i) => {   // 4 jet ski tabs, then 3 rider tabs
-    const row = i < 4 ? 0 : 1, n = row ? 3 : 4, tabW = Math.floor((w - 8) / n);
+  SLOTS.forEach((k, i) => {   // 4 jet ski tabs, then rider + world tabs
+    const row = i < 4 ? 0 : 1, n = 4, tabW = Math.floor((w - 8) / n);
     L.tabs.push({ k, x: x0 + 4 + (row ? i - 4 : i) * tabW, y: 42 + row * 18, w: tabW - 2, h: 16 });
   });
   const tw = Math.floor((w - 16) / 3), th = 46;
@@ -1631,6 +1767,20 @@ function iconCanvas(it) {
       px(x, y, it.a || it.g ? hairRgb(it, s, y / 15) : hexRgb(s ? HAIR_B[0] : HAIR_A[0]));
     }
   }
+  else if (it.slot === 'env') {
+    const v = ENV[it.id];
+    for (let y = 0; y < 10; y++) { g.fillStyle = v.sky[Math.floor(y * 0.8)]; g.fillRect(0, y, 30, 1); }
+    for (let y = 10; y < 16; y++) { g.fillStyle = v.far[y - 10]; g.fillRect(0, y, 30, 1); }
+    g.fillStyle = v.hz; g.fillRect(0, 10, 30, 1);
+    const sc = { sun: '#ffd35c', paleSun: '#fff6e0', bigsun: '#ffb84d', moon: '#fff6d0', planet: '#ff9a6a' }[v.sun];
+    if (sc) { g.fillStyle = sc; g.fillRect(22, v.sun === 'bigsun' ? 6 : 2, 4, 4); g.fillRect(21, v.sun === 'bigsun' ? 7 : 3, 6, 2); }
+    const ic = { palms: '#2f8f4e', blossom: '#ff9fc4', ice: '#ffffff', candy: '#ffb8d8', lighthouse: '#1c2550', silhouette: '#2a1f3d', float: '#9a5ac8' }[v.island] || '#5aa05a';
+    g.fillStyle = ic; g.fillRect(3, 8, 10, 2); g.fillRect(5, 6, 6, 2); g.fillRect(7, 5, 2, 1);
+    if (v.fx === 'stars' || v.fx === 'aurora' || v.fx === 'galaxy') { g.fillStyle = '#ffffff'; for (const [x, y] of [[2, 1], [9, 3], [15, 1], [18, 5], [13, 6]]) g.fillRect(x, y, 1, 1); }
+    if (v.fx === 'aurora') { g.fillStyle = 'rgba(90,255,180,0.6)'; g.fillRect(0, 3, 20, 2); }
+    if (v.fx === 'snow' || v.fx === 'petals') { g.fillStyle = v.fx === 'snow' ? '#ffffff' : '#ff9fc4'; for (const [x, y] of [[4, 2], [12, 4], [17, 1], [26, 12], [14, 13]]) g.fillRect(x, y, 1, 1); }
+    if (v.fx === 'storm') { g.fillStyle = '#fff6d0'; g.fillRect(16, 1, 1, 3); g.fillRect(15, 4, 2, 1); g.fillRect(15, 5, 1, 3); }
+  }
   else if (it.slot === 'tail') { g.fillStyle = '#9ee4ff'; g.fillRect(0, 0, 30, 16); g.fillStyle = '#c9f3ff'; g.fillRect(0, 0, 30, 4); }
   else if (it.slot === 'wake') {
     g.fillStyle = '#2b93a1'; g.fillRect(0, 0, 30, 16); g.fillStyle = '#5fc7c3'; g.fillRect(0, 12, 30, 1);
@@ -1654,6 +1804,7 @@ function drawIcon(it, x, y) {
   if (it.t) TAIL_DRAW[it.t](x + 20 + (it.ix || 0), y + 15 + (it.iy || 0), animT, false);
   if (it.id === 'ski-gold') { const s = (animT % 1.8) / 1.8 * 60 - 15; for (let yy = 0; yy < 16; yy++) for (let d = 0; d < 3; d++) { ctx.fillStyle = d ? '#fff6b8' : '#ffffff'; ctx.fillRect(Math.round(x + s - yy * 0.7 + d), y + yy, 1, 1); } }
   else if (it.id === 'tail-wings') ctx.drawImage(WINGS[FLAP[Math.floor(animT * 6) % FLAP.length]], x, y - 14);
+  else if (it.id === 'env-galaxy') { for (let i = 0; i < 8; i++) { const tw = Math.sin(animT * 4 + i * 1.7); if (tw > 0.2) rect(x + (i * 7) % 20, y + (i * 3) % 9, 1, 1, '#ffffff'); } }
   else if (it.id === 'decal-holo') { const a = HOLO[Math.floor(animT * 10) % 12].sm; ctx.drawImage(a, x + 15 - Math.floor(a.width / 2), y + 8 - Math.floor(a.height / 2)); }
   else if (it.id === 'suit-galaxy') { for (let i = 0; i < 14; i++) { const r = hash(i, 7), tw = Math.sin(animT * 5 + r * 90); if (tw > -0.3) rect(x + (i * 7) % 17, y + (i * 5) % 16, 1, 1, tw > 0.55 ? '#ffffff' : '#b9a8ff'); } }
   else if (it.id === 'hair-unicorn') { for (let yy = 0; yy < 16; yy++) for (let xx = 0; xx < 30; xx++) { const s = (xx + Math.floor(yy / 5)) % 4 === 0 ? 1 : 0; ctx.fillStyle = UNI[Math.floor((((yy / 15) * 320 - animT * 150) % 360 + 360) % 360 / 10)][s]; ctx.fillRect(x + xx, y + yy, 1, 1); } }
@@ -1769,6 +1920,8 @@ function drawHUD() {
 function draw() {
   ctx.save();
   if (shake > 0) ctx.translate(Math.round((Math.random() * 2 - 1) * shake * 10), Math.round((Math.random() * 2 - 1) * shake * 10));
+  const ev = look().env || 'env-dreamy';
+  if (ev !== envId && ENV[ev]) { envId = ev; E = ENV[ev]; buildSea(); }
   drawSky();
   drawSea();
   drawDolphins();
@@ -1776,6 +1929,7 @@ function draw() {
   drawPlayer();
   drawFrontFoam();
   drawParticles();
+  drawEnvFront();
   drawWarnings();
   ctx.restore();
   if (state !== 'shop') drawButton();
