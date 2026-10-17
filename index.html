@@ -195,7 +195,8 @@ let tallCleared = parseInt(store.get('jetskijump.tallcleared', '0'), 10) || 0;
 // ---------- shells, shop & cloud save ----------
 // 1 shell per 10 m + 5 per near miss. Everything is code-drawn: recolours keep the sprite's own shading.
 const SHELLS_PER_NEAR = 5, WELCOME_SHELLS = 300;
-const C1 = 30, C2 = 60, C3 = 120, LEG = 800;   // common, nice, rare, legendary (~70 runs buys the lot)
+const C1 = 1, C2 = 2, C3 = 3, LEG = 4;   // tier markers: common 100-200, nice 300-600, rare 1,000-1,500, legendary 3,000 (ramped per tab below)
+const TIER_RANGE = { 1: [100, 200, 25], 2: [300, 600, 50], 3: [1000, 1500, 100], 4: [3000, 3000, 1] };
 const sh = (h, sm = 1, lm = 1, la = 0) => ({ h, sm, lm, la });
 const WHITE = sh(210, 0.12, 1.45, 0.22), BLACK = sh(250, 0.25, 0.42), PINK = sh(330, 1.2, 1.1), PINK_L = sh(335, 1.2, 1.3), MINT = sh(155, 0.9, 1.15),
   LILAC = sh(275, 0.9, 1.15), ORANGE = sh(22, 1.5, 1.05), RED = sh(352, 1.4, 0.95), YELLOW = sh(50, 1.6, 1.45), LIME = sh(95, 1.1, 1.15),
@@ -346,6 +347,10 @@ const SHOP = {
 const SLOTS = ['ski', 'decal', 'suit', 'hair', 'wake', 'hat'];
 const ITEM = {};
 for (const s of SLOTS) for (const it of SHOP[s].items) { it.slot = s; ITEM[it.id] = it; }
+for (const s of SLOTS) for (const t in TIER_RANGE) {   // spread each tier's items cheapest to dearest in list order
+  const its = SHOP[s].items.filter(it => it.price === +t), [lo, hi, step] = TIER_RANGE[t];
+  its.forEach((it, i) => { it.price = Math.round((lo + (hi - lo) * (its.length > 1 ? i / (its.length - 1) : 0)) / step) * step; });
+}
 const DEFAULT_EQ = { ski: 'ski-blue', decal: 'decal-none', suit: 'suit-teal', hair: 'hair-natural', wake: 'wake-classic', hat: null };
 const FREE = Object.values(DEFAULT_EQ).filter(Boolean);
 // v7/v8 prices, refunded down to the new ones once
