@@ -193,52 +193,182 @@ let postsCleared = parseInt(store.get('jetskijump.postscleared', '0'), 10) || 0;
 let tallCleared = parseInt(store.get('jetskijump.tallcleared', '0'), 10) || 0;
 
 // ---------- shells, shop & cloud save ----------
-// 1 shell per 10 m + 5 per near miss. Recolours are hue/saturation/lightness shifts of the sprite's own shades.
+// 1 shell per 10 m + 5 per near miss. Everything is code-drawn: recolours keep the sprite's own shading.
 const SHELLS_PER_NEAR = 5, WELCOME_SHELLS = 300;
+const C1 = 30, C2 = 60, C3 = 120, LEG = 800;   // common, nice, rare, legendary (~70 runs buys the lot)
+const sh = (h, sm = 1, lm = 1, la = 0) => ({ h, sm, lm, la });
+const WHITE = sh(210, 0.12, 1.45, 0.22), BLACK = sh(250, 0.25, 0.42), PINK = sh(330, 1.2, 1.1), PINK_L = sh(335, 1.2, 1.3), MINT = sh(155, 0.9, 1.15),
+  LILAC = sh(275, 0.9, 1.15), ORANGE = sh(22, 1.5, 1.05), RED = sh(352, 1.4, 0.95), YELLOW = sh(50, 1.6, 1.45), LIME = sh(95, 1.1, 1.15),
+  NAVY = sh(225, 1, 0.7), GREEN = sh(135, 1, 0.8), TEAL = sh(178, 1.1, 1.05), GOLD = sh(44, 1.6, 1.2), ROSE = sh(352, 1, 1.35);
+const par = n => ((Math.floor(n) % 2) + 2) % 2;
+const hash = (x, y) => ((((x * 73856093) ^ (y * 19349663)) >>> 0) % 1000) / 1000;
+// hull patterns: (u, v, shade) -> shift; u counts back from the nose, v down from the deck; shade 0 is the deck highlight
+const solid = c => () => c;
+const two = (body, deck) => (u, v, s) => s === 0 ? deck : body;
+const stripes = (a, b, w) => (u, v) => par(v / w) ? b : a;
+const diag = (a, b, w) => (u, v) => par((u + v) / w) ? b : a;
+const checks = (a, b, w) => (u, v) => par(u / w) ^ par(v / w) ? b : a;
+const confetti = (base, cols, d) => (u, v) => { const r = hash(u + 99, v + 99); return r < d ? cols[Math.floor(r / d * cols.length)] : base; };
+const SKI_PAT = {
+  picnic: (u, v) => { const a = par(u / 2), b = par(v / 2); return a && b ? RED : a || b ? ROSE : WHITE; },
+  melon: (u, v, s) => s === 0 ? GREEN : hash(u + 7, v + 3) < 0.07 ? BLACK : sh(350, 1.3, 1.2),
+  flames: (u, v) => { const d = 22 + 6 * Math.sin(v * 0.9) + 3 * Math.sin(v * 2.3) - u; return d < 0 ? BLACK : d < 3 ? sh(356, 1.6, 1.1) : d < 7 ? ORANGE : YELLOW; },
+  zebra: (u, v) => par((u * 0.5 + v + 2 * Math.sin(u * 0.35)) / 2.5) ? WHITE : BLACK,
+  tiedye: (u, v) => sh(((Math.atan2(v - 10, u - 30) * 115 + Math.hypot(v - 10, u - 30) * 16) % 360 + 360) % 360, 2, 1.3),
+};
+// outfits recolour the life vest (2 shades) and shorts; vp patterns the vest: (x, y) inside the vest box
+const vSolid = (vest, shorts) => ({ vest, shorts });
+const VWHITE = sh(200, 0.1, 1.5, 0.1), VBLACK = sh(260, 0.15, 0.55);
+// hair: light & dark shade colours, or g = gradient stops from crown to tips
 const SHOP = {
   ski: { label: 'JET SKI', items: [
     { id: 'ski-blue', name: 'OCEAN', price: 0 },
-    { id: 'ski-pink', name: 'BUBBLEGUM', price: 400, c: { h: 330, sm: 1.2, lm: 1.1 } },
-    { id: 'ski-mint', name: 'MINT', price: 400, c: { h: 155, sm: 0.9, lm: 1.15 } },
-    { id: 'ski-lilac', name: 'LILAC', price: 500, c: { h: 275, sm: 0.9, lm: 1.15 } },
-    { id: 'ski-sunset', name: 'SUNSET', price: 500, c: { h: 22, sm: 1.5, lm: 1.05 } },
-    { id: 'ski-cherry', name: 'CHERRY', price: 600, c: { h: 352, sm: 1.4, lm: 0.95 } },
-    { id: 'ski-midnight', name: 'MIDNIGHT', price: 750, c: { h: 250, sm: 0.25, lm: 0.5 } },
-    { id: 'ski-pearl', name: 'PEARL', price: 750, c: { h: 220, sm: 0.2, lm: 0.6, la: 0.42 } },
-    { id: 'ski-gold', name: 'GOLD', price: 2500, c: { h: 44, sm: 1.6, lm: 1.2 } },
+    { id: 'ski-pink', name: 'BUBBLEGUM', price: C1, p: solid(PINK) },
+    { id: 'ski-mint', name: 'MINT', price: C1, p: solid(MINT) },
+    { id: 'ski-lilac', name: 'LILAC', price: C1, p: solid(LILAC) },
+    { id: 'ski-sunset', name: 'SUNSET', price: C1, p: solid(ORANGE) },
+    { id: 'ski-cherry', name: 'CHERRY', price: C1, p: solid(RED) },
+    { id: 'ski-lemon', name: 'LEMON', price: C1, p: solid(YELLOW) },
+    { id: 'ski-lime', name: 'LIME', price: C1, p: solid(LIME) },
+    { id: 'ski-midnight', name: 'MIDNIGHT', price: C2, p: solid(sh(250, 0.25, 0.5)) },
+    { id: 'ski-pearl', name: 'PEARL', price: C2, p: solid(sh(220, 0.2, 0.6, 0.42)) },
+    { id: 'ski-creamsicle', name: 'CREAMSICLE', price: C2, p: two(ORANGE, WHITE) },
+    { id: 'ski-yacht', name: 'YACHT', price: C2, p: two(WHITE, NAVY) },
+    { id: 'ski-candy', name: 'CANDY', price: C2, p: diag(PINK_L, WHITE, 3) },
+    { id: 'ski-bee', name: 'BUMBLEBEE', price: C2, p: stripes(YELLOW, BLACK, 3) },
+    { id: 'ski-checkers', name: 'CHECKERS', price: C2, p: checks(WHITE, BLACK, 4) },
+    { id: 'ski-picnic', name: 'PICNIC', price: C3, p: SKI_PAT.picnic },
+    { id: 'ski-sprinkles', name: 'SPRINKLES', price: C3, p: confetti(PINK_L, [WHITE, YELLOW, TEAL, LIME], 0.16) },
+    { id: 'ski-melon', name: 'WATERMELON', price: C3, p: SKI_PAT.melon },
+    { id: 'ski-hotrod', name: 'HOT ROD', price: C3, p: SKI_PAT.flames },
+    { id: 'ski-zebra', name: 'ZEBRA', price: C3, p: SKI_PAT.zebra },
+    { id: 'ski-tiedye', name: 'TIE-DYE', price: C3, p: SKI_PAT.tiedye },
+    { id: 'ski-gold', name: 'GOLD', price: LEG, p: solid(GOLD), leg: true },
+  ] },
+  decal: { label: 'DECAL', items: [
+    { id: 'decal-none', name: 'NONE', price: 0 },
+    { id: 'decal-heart', name: 'HEART', price: C1, art: 'heart' },
+    { id: 'decal-star', name: 'STAR', price: C1, art: 'star' },
+    { id: 'decal-smiley', name: 'SMILEY', price: C1, art: 'smiley' },
+    { id: 'decal-flower', name: 'FLOWER', price: C1, art: 'flower' },
+    { id: 'decal-moon', name: 'MOON', price: C1, art: 'moon' },
+    { id: 'decal-sun', name: 'SUN', price: C1, art: 'sun' },
+    { id: 'decal-clover', name: 'CLOVER', price: C1, art: 'clover' },
+    { id: 'decal-bolt', name: 'BOLT', price: C2, art: 'bolt' },
+    { id: 'decal-music', name: 'MUSIC', price: C2, art: 'music' },
+    { id: 'decal-paw', name: 'PAW', price: C2, art: 'paw' },
+    { id: 'decal-cherry', name: 'CHERRIES', price: C2, art: 'cherry' },
+    { id: 'decal-anchor', name: 'ANCHOR', price: C2, art: 'anchor' },
+    { id: 'decal-fish', name: 'FISH', price: C2, art: 'fish' },
+    { id: 'decal-one', name: 'NUMBER 1', price: C2, art: 'one' },
+    { id: 'decal-crown', name: 'CROWN', price: C3, art: 'crown' },
+    { id: 'decal-rainbow', name: 'RAINBOW', price: C3, art: 'rainbow' },
+    { id: 'decal-comet', name: 'COMET', price: C3, art: 'comet' },
+    { id: 'decal-diamond', name: 'DIAMOND', price: C3, art: 'diamond' },
+    { id: 'decal-bow', name: 'BOW', price: C3, art: 'bow' },
+    { id: 'decal-lips', name: 'KISS', price: C3, art: 'lips' },
+    { id: 'decal-wings', name: 'WINGS', price: LEG, leg: true },
   ] },
   suit: { label: 'OUTFIT', items: [
     { id: 'suit-teal', name: 'LAGOON', price: 0 },
-    { id: 'suit-coral', name: 'CORAL', price: 300, vest: { h: 10, sm: 1.4, lm: 1.2 }, shorts: { h: 45, sm: 1.2, lm: 1.2 } },
-    { id: 'suit-sunny', name: 'SUNNY', price: 300, vest: { h: 48, sm: 1.6, lm: 1.4 }, shorts: { h: 200, sm: 1, lm: 1 } },
-    { id: 'suit-lavender', name: 'LAVENDER', price: 400, vest: { h: 270, sm: 1, lm: 1.25 }, shorts: { h: 300, sm: 0.8, lm: 1.15 } },
-    { id: 'suit-pink', name: 'HOT PINK', price: 400, vest: { h: 330, sm: 1.5, lm: 1.3 }, shorts: { h: 330, sm: 1, lm: 0.8 } },
-    { id: 'suit-navy', name: 'SAILOR', price: 500, vest: { h: 225, sm: 1, lm: 0.8 }, shorts: { h: 0, sm: 0.1, lm: 1.5 } },
-    { id: 'suit-black', name: 'NOIR', price: 600, vest: { h: 260, sm: 0.15, lm: 0.55 }, shorts: { h: 260, sm: 0.15, lm: 0.5 } },
+    { id: 'suit-coral', name: 'CORAL', price: C1, ...vSolid(sh(10, 1.4, 1.2), sh(45, 1.2, 1.2)) },
+    { id: 'suit-sunny', name: 'SUNNY', price: C1, ...vSolid(sh(48, 1.6, 1.4), sh(200, 1, 1)) },
+    { id: 'suit-lavender', name: 'LAVENDER', price: C1, ...vSolid(sh(270, 1, 1.25), sh(300, 0.8, 1.15)) },
+    { id: 'suit-pink', name: 'HOT PINK', price: C1, ...vSolid(sh(330, 1.5, 1.3), sh(330, 1, 0.8)) },
+    { id: 'suit-mint', name: 'MINT CHIP', price: C1, ...vSolid(sh(150, 0.8, 1.35), sh(25, 0.6, 0.6)) },
+    { id: 'suit-peach', name: 'PEACH', price: C1, ...vSolid(sh(22, 1.3, 1.45), sh(15, 0.9, 1.3)) },
+    { id: 'suit-sky', name: 'SKY', price: C1, ...vSolid(sh(200, 1.2, 1.4), VWHITE) },
+    { id: 'suit-navy', name: 'SAILOR', price: C2, ...vSolid(sh(225, 1, 0.8), sh(0, 0.1, 1.5)) },
+    { id: 'suit-black', name: 'NOIR', price: C2, ...vSolid(VBLACK, sh(260, 0.15, 0.5)) },
+    { id: 'suit-berry', name: 'BERRY', price: C2, ...vSolid(sh(320, 1.2, 0.7), sh(275, 0.9, 0.9)) },
+    { id: 'suit-forest', name: 'FOREST', price: C2, ...vSolid(sh(130, 0.9, 0.7), sh(35, 0.7, 0.9)) },
+    { id: 'suit-choc', name: 'CHOCOLATE', price: C2, ...vSolid(sh(20, 0.7, 0.55), sh(35, 0.6, 1.35)) },
+    { id: 'suit-denim', name: 'DENIM', price: C2, ...vSolid(sh(215, 0.6, 0.85), sh(215, 0.5, 1.1)) },
+    { id: 'suit-lemonade', name: 'LEMONADE', price: C2, ...vSolid(sh(55, 1.5, 1.5), sh(335, 1, 1.25)) },
+    { id: 'suit-candy', name: 'CANDY', price: C3, vp: (x, y) => par(y / 2) ? VWHITE : sh(335, 1.4, 1.3), shorts: VWHITE },
+    { id: 'suit-sailstripe', name: 'BRETON', price: C3, vp: (x, y) => par(y / 2) ? VWHITE : sh(225, 1, 0.75), shorts: sh(0, 1.4, 1) },
+    { id: 'suit-tiger', name: 'TIGER', price: C3, vp: (x, y) => par((y + x * 0.6) / 2) ? VBLACK : sh(25, 1.6, 1.25), shorts: VBLACK },
+    { id: 'suit-checks', name: 'CHECKMATE', price: C3, vp: (x, y) => par(x / 2) ^ par(y / 2) ? VBLACK : VWHITE, shorts: sh(350, 1.3, 1) },
+    { id: 'suit-polka', name: 'POLKA', price: C3, vp: (x, y) => (x % 4 === 1 && y % 4 === 1) || (x % 4 === 3 && y % 4 === 3) ? VWHITE : sh(350, 1.4, 1.1), shorts: VWHITE },
+    { id: 'suit-tropic', name: 'TROPICAL', price: C3, vp: (x, y) => { const r = hash(x + 5, y + 11); return r < 0.18 ? sh(330, 1.5, 1.4) : r < 0.32 ? sh(50, 1.6, 1.5) : sh(165, 1.1, 1.05); }, shorts: sh(30, 1.4, 1.3) },
+    { id: 'suit-galaxy', name: 'GALAXY', price: LEG, ...vSolid(sh(258, 0.9, 0.5), sh(275, 0.8, 0.5)), leg: true },
+  ] },
+  hair: { label: 'HAIR', items: [
+    { id: 'hair-natural', name: 'NATURAL', price: 0 },
+    { id: 'hair-blonde', name: 'BLONDE', price: C1, a: '#e3b964', b: '#b0823a' },
+    { id: 'hair-honey', name: 'HONEY', price: C1, a: '#c48a44', b: '#8a5628' },
+    { id: 'hair-auburn', name: 'AUBURN', price: C1, a: '#8e3a24', b: '#5c2016' },
+    { id: 'hair-black', name: 'JET BLACK', price: C1, a: '#2e2a38', b: '#16121c' },
+    { id: 'hair-strawberry', name: 'STRAWBERRY', price: C1, a: '#e2825c', b: '#a8503a' },
+    { id: 'hair-copper', name: 'COPPER', price: C1, a: '#c4622c', b: '#843a1a' },
+    { id: 'hair-cherry', name: 'CHERRY', price: C1, a: '#c2283e', b: '#7e1426' },
+    { id: 'hair-platinum', name: 'PLATINUM', price: C2, a: '#f2ead6', b: '#c2b494' },
+    { id: 'hair-silver', name: 'SILVER', price: C2, a: '#cfd1dc', b: '#8c8ea0' },
+    { id: 'hair-pink', name: 'PINK', price: C2, a: '#ff8fb8', b: '#d0507e' },
+    { id: 'hair-lilac', name: 'LILAC', price: C2, a: '#c6a2f0', b: '#8a64c2' },
+    { id: 'hair-blue', name: 'BLUE', price: C2, a: '#5a8ef0', b: '#3050a8' },
+    { id: 'hair-teal', name: 'TEAL', price: C2, a: '#3cc4c0', b: '#1f8080' },
+    { id: 'hair-mint', name: 'MINT', price: C2, a: '#a2ecc8', b: '#5aae8a' },
+    { id: 'hair-peekaboo', name: 'PEEKABOO', price: C3, a: '#4a2729', b: '#ff5c9a' },
+    { id: 'hair-ombrepink', name: 'OMBRE PINK', price: C3, g: ['#4a2729', '#4a2729', '#c2507e', '#ff9cc4'] },
+    { id: 'hair-ombreblue', name: 'OMBRE BLUE', price: C3, g: ['#4a2729', '#4a2729', '#3a6ad0', '#8fd8ff'] },
+    { id: 'hair-sunset', name: 'SUNSET', price: C3, g: ['#ffd66b', '#ff9a4a', '#ff5c7a', '#c2407e'] },
+    { id: 'hair-pastel', name: 'PASTEL', price: C3, g: ['#ffb0d0', '#e8b8f0', '#b0d0ff', '#a8f0e0'] },
+    { id: 'hair-mermaid', name: 'MERMAID', price: C3, g: ['#2fc4b4', '#3a8ee0', '#7a5ce0', '#c25cd0'] },
+    { id: 'hair-unicorn', name: 'UNICORN', price: LEG, g: ['#ff7aa8', '#ffd35c', '#7be08a', '#5fd3f0', '#a98cff'], leg: true },
   ] },
   wake: { label: 'WAKE', items: [
-    { id: 'wake-classic', name: 'CLASSIC', price: 0, dots: ['#ffffff', '#c9f3f0'] },
-    { id: 'wake-sparkle', name: 'SPARKLE', price: 1000, dots: ['#fff6b8', '#ffd35c', '#ffffff'] },
-    { id: 'wake-bubbles', name: 'BUBBLES', price: 1200, dots: ['#e9fcf9', '#9fe3dc'] },
-    { id: 'wake-hearts', name: 'HEARTS', price: 1500, dots: ['#ff5c8a', '#ffd0e0'] },
-    { id: 'wake-rainbow', name: 'RAINBOW', price: 1800, dots: ['#ff5c7a', '#ffa64d', '#ffe066', '#7be08a', '#5fd3f0', '#8f7bff'] },
+    { id: 'wake-classic', name: 'CLASSIC', price: 0, spray: ['#ffffff', '#c9f3f0'] },
+    { id: 'wake-fizz', name: 'PINK FIZZ', price: C1, spray: ['#ffd0e0', '#ff8fb8', '#ffffff'] },
+    { id: 'wake-lemonade', name: 'LEMONADE', price: C1, spray: ['#fff6b8', '#ffe066', '#ffffff'] },
+    { id: 'wake-minty', name: 'MINTY', price: C1, spray: ['#c9f7e4', '#7be0b4', '#ffffff'] },
+    { id: 'wake-grape', name: 'GRAPE', price: C1, spray: ['#e2d4ff', '#a98cff', '#ffffff'] },
+    { id: 'wake-peach', name: 'PEACH', price: C1, spray: ['#ffe0c8', '#ffb08a', '#ffffff'] },
+    { id: 'wake-bubbles', name: 'BUBBLES', price: C1, spray: ['#ffffff', '#c9f3f0'], fx: { k: 'bubble', p: 0.18 } },
+    { id: 'wake-sparkle', name: 'SPARKLE', price: C1, spray: ['#ffffff', '#fff6b8'], fx: { k: 'spark', p: 0.2, c: ['#fff6b8', '#ffd35c', '#ffffff'] } },
+    { id: 'wake-hearts', name: 'HEARTS', price: C2, spray: ['#ffffff', '#ffd0e0'], fx: { k: 'icon', p: 0.1, img: 'heart', mv: 'rise' } },
+    { id: 'wake-stars', name: 'STARS', price: C2, spray: ['#ffffff', '#fff6b8'], fx: { k: 'icon', p: 0.1, img: 'star', mv: 'rise' } },
+    { id: 'wake-music', name: 'MUSIC', price: C2, spray: ['#ffffff', '#c9f3f0'], fx: { k: 'icon', p: 0.09, img: 'note', mv: 'rise' } },
+    { id: 'wake-flowers', name: 'FLOWERS', price: C2, spray: ['#ffffff', '#ffd0e0'], fx: { k: 'icon', p: 0.1, img: 'daisy', mv: 'flutter' } },
+    { id: 'wake-petals', name: 'PETALS', price: C2, spray: ['#ffffff', '#ffd0e0'], fx: { k: 'icon', p: 0.16, img: 'petal', mv: 'flutter' } },
+    { id: 'wake-leaves', name: 'LEAVES', price: C2, spray: ['#ffffff', '#c9f7e4'], fx: { k: 'icon', p: 0.12, img: 'leaf', mv: 'flutter' } },
+    { id: 'wake-confetti', name: 'CONFETTI', price: C2, spray: ['#ffffff', '#c9f3f0'], fx: { k: 'confetti', p: 0.3 } },
+    { id: 'wake-rainbow', name: 'RAINBOW', price: C3, spray: RAINBOW },
+    { id: 'wake-snow', name: 'SNOW', price: C3, spray: ['#ffffff', '#e8f4ff'], fx: { k: 'icon', p: 0.12, img: 'flake', mv: 'flutter' } },
+    { id: 'wake-fire', name: 'FIRE', price: C3, spray: ['#ffe066', '#ffa64d', '#ff5c3a'], fx: { k: 'ember', p: 0.4 } },
+    { id: 'wake-glitter', name: 'GLITTER', price: C3, spray: ['#ffe9a8', '#ffd35c', '#ffffff'], fx: { k: 'spark', p: 0.45, c: ['#ffd35c', '#ffe9a8', '#fff6b8'] } },
+    { id: 'wake-butterfly', name: 'BUTTERFLY', price: C3, spray: ['#ffffff', '#e2d4ff'], fx: { k: 'icon', p: 0.06, img: 'fly', mv: 'rise' } },
+    { id: 'wake-coins', name: 'COINS', price: C3, spray: ['#ffffff', '#ffe9a8'], fx: { k: 'icon', p: 0.08, img: 'coin', mv: 'rise' } },
+    { id: 'wake-fireworks', name: 'FIREWORKS', price: LEG, spray: ['#ffffff', '#c9f3f0'], leg: true },
   ] },
   hat: { label: 'HATS', items: [] },
 };
-const SLOTS = ['ski', 'suit', 'wake', 'hat'];
+const SLOTS = ['ski', 'decal', 'suit', 'hair', 'wake', 'hat'];
 const ITEM = {};
 for (const s of SLOTS) for (const it of SHOP[s].items) { it.slot = s; ITEM[it.id] = it; }
-const DEFAULT_EQ = { ski: 'ski-blue', suit: 'suit-teal', wake: 'wake-classic', hat: null };
-function freshSave() { return { v: 1, shells: WELCOME_SHELLS, owned: ['ski-blue', 'suit-teal', 'wake-classic'], eq: { ...DEFAULT_EQ }, best, rev: 0 }; }
+const DEFAULT_EQ = { ski: 'ski-blue', decal: 'decal-none', suit: 'suit-teal', hair: 'hair-natural', wake: 'wake-classic', hat: null };
+const FREE = Object.values(DEFAULT_EQ).filter(Boolean);
+// v7/v8 prices, refunded down to the new ones once
+const OLD_PRICE = { 'ski-pink': 400, 'ski-mint': 400, 'ski-lilac': 500, 'ski-sunset': 500, 'ski-cherry': 600, 'ski-midnight': 750, 'ski-pearl': 750, 'ski-gold': 2500,
+  'suit-coral': 300, 'suit-sunny': 300, 'suit-lavender': 400, 'suit-pink': 400, 'suit-navy': 500, 'suit-black': 600,
+  'wake-sparkle': 1000, 'wake-bubbles': 1200, 'wake-hearts': 1500, 'wake-rainbow': 1800 };
+let refundNote = 0;
+function freshSave() { return { v: 2, shells: WELCOME_SHELLS, owned: [...FREE], eq: { ...DEFAULT_EQ }, best, rev: 0 }; }
 function cleanSave(s) {
   const d = freshSave();
   if (!s || typeof s !== 'object') return d;
-  return { v: 1, shells: Math.max(0, Math.floor(+s.shells || 0)), owned: [...new Set([...d.owned, ...(Array.isArray(s.owned) ? s.owned.filter(id => ITEM[id]) : [])])],
-    eq: { ...DEFAULT_EQ, ...(s.eq || {}) }, best: Math.max(0, Math.floor(+s.best || 0)), rev: Math.floor(+s.rev || 0) };
+  const owned = [...new Set([...d.owned, ...(Array.isArray(s.owned) ? s.owned.filter(id => ITEM[id]) : [])])];
+  let shells = Math.max(0, Math.floor(+s.shells || 0));
+  if (!(s.v >= 2)) { const r = owned.reduce((a, id) => a + Math.max(0, (OLD_PRICE[id] || 0) - ITEM[id].price), 0); shells += r; refundNote = Math.max(refundNote, r); }
+  const eq = { ...DEFAULT_EQ };
+  for (const k in eq) if (s.eq && owned.includes(s.eq[k]) && ITEM[s.eq[k]].slot === k) eq[k] = s.eq[k];
+  return { v: 2, shells, owned, eq, best: Math.max(0, Math.floor(+s.best || 0)), rev: Math.floor(+s.rev || 0) };
 }
 let save = (() => { try { const raw = store.get('jetskijump.save', null); return raw ? cleanSave(JSON.parse(raw)) : freshSave(); } catch (e) { return freshSave(); } })();
 best = Math.max(best, save.best);
-let profile = (() => { try { const p = JSON.parse(store.get('jetskijump.profile', 'null')); return p && p.name && p.pin ? p : null; } catch (e) { return null; } })();
+const PREVIEW = false;   // build-v9.py --preview: shop sandbox with free shells, nothing saved to the cloud
+if (PREVIEW) { save = freshSave(); save.shells = 99999; refundNote = 0; }
+let profile = PREVIEW ? null : (() => { try { const p = JSON.parse(store.get('jetskijump.profile', 'null')); return p && p.name && p.pin ? p : null; } catch (e) { return null; } })();
 let syncStatus = profile ? 'busy' : 'off';   // off | busy | ok | offline
 const SB_URL = 'https://mqumhchbimgzszoxeuhj.supabase.co/rest/v1/', SB_KEY = 'sb_publishable_1dbUOazpsOpLPzSPG6ptQw_d9Qu_of3';
 async function sb(path, body, prefer) {
@@ -250,11 +380,11 @@ async function sb(path, body, prefer) {
 }
 function mergeSaves(local, remote) {   // newest edit wins for shells and outfit; owned items are never lost
   const hi = remote.rev >= local.rev ? remote : local;
-  return { v: 1, shells: hi.shells, owned: [...new Set([...local.owned, ...remote.owned])], eq: { ...hi.eq }, best: Math.max(local.best, remote.best), rev: Math.max(local.rev, remote.rev) + 1 };
+  return { v: 2, shells: hi.shells, owned: [...new Set([...local.owned, ...remote.owned])], eq: { ...hi.eq }, best: Math.max(local.best, remote.best), rev: Math.max(local.rev, remote.rev) + 1 };
 }
 let pushing = null, pushAgain = false;
 async function pushSave() {
-  if (!profile) return;
+  if (!profile || PREVIEW) return;
   if (pushing) { pushAgain = true; return; }
   pushing = sb('rpc/store_save', { p_name: profile.name, p_pin: profile.pin, p_data: save })
     .then(ok => { syncStatus = ok ? 'ok' : 'offline'; }).catch(() => { syncStatus = 'offline'; });
@@ -263,10 +393,11 @@ async function pushSave() {
 }
 function commitSave() {
   save.rev++; save.best = Math.max(save.best, best);
-  store.set('jetskijump.save', JSON.stringify(save));
+  if (!PREVIEW) store.set('jetskijump.save', JSON.stringify(save));
   pushSave();
 }
 async function signIn(name, pin) {   // returns '' on success or an error message
+  if (PREVIEW) return 'PREVIEW ONLY: SAVING IS OFF.';
   syncStatus = 'busy';
   let r;
   try { r = await sb('rpc/load_save', { p_name: name, p_pin: pin }); } catch (e) { syncStatus = profile ? 'offline' : 'off'; return 'NO CONNECTION. TRY AGAIN LATER.'; }
@@ -419,9 +550,11 @@ const MINI_HEART = pixelArt([
 // ---------- outfit recolouring ----------
 const HULL_COLS = ['#6084e9', '#4045a9', '#4147b1', '#444cb4', '#4346a7', '#35488e'];   // hull shades (below HULL_Y; the eyes share one)
 const VEST_COLS = ['#3691a5', '#cee1e4'], SHORTS_COLS = ['#ce5159', '#742734'];
-const HULL_Y = 34;
+const HAIR_A = ['#4a2729', '#4f2b2a', '#4c2a2a'], HAIR_B = ['#301624', '#2e1322', '#331725', '#351926'];   // hair light / shadow shades
+const HULL_Y = 34, NFR = 5;
 const VEST_BOX = [[21, 36, 38, 52], [22, 36, 40, 52], [15, 26, 32, 42], [18, 37, 35, 54], [27, 33, 45, 50]];   // per frame x0,y0,x1,y1 (eyes, lips and spray share these shades)
 const SHORTS_BOX = [[20, 50, 30, 57], [22, 50, 32, 57], [15, 41, 26, 48], [17, 52, 27, 60], [25, 44, 36, 51]];
+const inBox = (b, x, y) => x >= b[0] && x < b[2] && y >= b[1] && y < b[3];
 function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
 function rgbHsl(r, g, b) {
   r /= 255; g /= 255; b /= 255;
@@ -441,32 +574,166 @@ function shiftRgb(rgb, s) {
   const [h, sat, l] = rgbHsl(...rgb);
   return hslRgb(s.h ?? h, Math.min(1, sat * (s.sm ?? 1)), clamp01(l * (s.lm ?? 1) + (s.la || 0)));
 }
-function swatch(hex, s) { const [r, g, b] = s ? shiftRgb(hexRgb(hex), s) : hexRgb(hex); return 'rgb(' + r + ',' + g + ',' + b + ')'; }
+const css = c => 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+function hairRgb(it, s, v) {   // hair shade s (0 light, 1 shadow) at v = distance from the crown (0) to the tips (1)
+  if (!it.g) return hexRgb(s ? it.b : it.a);
+  const n = it.g.length - 1, q = Math.min(n - 1e-6, Math.max(0, v) * n), i = Math.floor(q), u = q - i;
+  const a = hexRgb(it.g[i]), b = hexRgb(it.g[i + 1]);
+  return a.map((x, j) => Math.round((x + (b[j] - x) * u) * (s ? 0.62 : 1)));
+}
+// per-frame pixel maps of the original sprite (hull, hair, vest), built once it loads
+let PIX = null;
+function buildPix() {
+  const W = img.player.width, H = img.player.height;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d'); g.drawImage(img.player, 0, 0);
+  const d = g.getImageData(0, 0, W, H).data, key = h => parseInt(h.slice(1), 16);
+  const HULL = new Map(HULL_COLS.map((h, i) => [key(h), i])), HA = new Set(HAIR_A.map(key)), HB = new Set(HAIR_B.map(key)), VEST = key(VEST_COLS[0]);
+  const mask = document.createElement('canvas'); mask.width = W; mask.height = H;
+  const mg = mask.getContext('2d'); mg.fillStyle = '#ffffff';
+  PIX = { hull: [], hair: [], vest: [], nose: [], mask };
+  for (let f = 0; f < NFR; f++) {
+    const hull = [], hair = [], vest = [];
+    for (let y = 0; y < H; y++) for (let x = 0; x < FW; x++) {
+      const i = (y * W + f * FW + x) * 4;
+      if (!d[i + 3]) continue;
+      const k = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+      if (y >= HULL_Y && HULL.has(k)) { hull.push({ x, y, s: HULL.get(k) }); mg.fillRect(f * FW + x, y, 1, 1); }
+      else if (HA.has(k) || HB.has(k)) hair.push({ x, y, s: HB.has(k) ? 1 : 0 });
+      else if (k === VEST && inBox(VEST_BOX[f], x, y)) vest.push({ x: x - VEST_BOX[f][0], y: y - VEST_BOX[f][1], px: x, py: y });
+    }
+    const top = Math.min(...hair.map(p => p.y)), crown = hair.filter(p => p.y < top + 3);
+    const cx = crown.reduce((a, p) => a + p.x, 0) / crown.length;
+    let md = 1;
+    for (const p of hair) { p.v = Math.hypot(p.x - cx, p.y - top); md = Math.max(md, p.v); }
+    for (const p of hair) p.v /= md;
+    PIX.hull.push(hull); PIX.hair.push(hair); PIX.vest.push(vest);
+    PIX.nose.push({ x: Math.max(...hull.map(p => p.x)), y: Math.min(...hull.map(p => p.y)) });
+  }
+}
 const tintCache = new Map();
-function tintedPlayer(skiId, suitId) {
-  const key = skiId + '|' + suitId;
+function tintedPlayer(eq) {
+  const ski = ITEM[eq.ski] || {}, suit = ITEM[eq.suit] || {}, hair = ITEM[eq.hair] || {};
+  const key = eq.ski + '|' + eq.suit + '|' + eq.hair;
   if (tintCache.has(key)) return tintCache.get(key);
-  const ski = ITEM[skiId] || {}, suit = ITEM[suitId] || {};
+  if (tintCache.size > 40) tintCache.clear();
   let out = img.player;
-  if (ski.c || suit.vest) {
-    const c = document.createElement('canvas'); c.width = img.player.width; c.height = img.player.height;
+  if (ski.p || suit.vest || suit.vp || hair.a || hair.g) {
+    const W = img.player.width, c = document.createElement('canvas'); c.width = W; c.height = img.player.height;
     const g = c.getContext('2d'); g.drawImage(img.player, 0, 0);
     const id = g.getImageData(0, 0, c.width, c.height), d = id.data;
-    const map = (cols, s) => s ? new Map(cols.map(h => [parseInt(h.slice(1), 16), shiftRgb(hexRgb(h), s)])) : null;
-    const hull = map(HULL_COLS, ski.c), vest = map(VEST_COLS, suit.vest), shorts = map(SHORTS_COLS, suit.shorts);
-    const inBox = (b, x, y) => x >= b[0] && x < b[2] && y >= b[1] && y < b[3];
-    for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
-      const i = (y * c.width + x) * 4;
-      if (!d[i + 3]) continue;
-      const k = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2], f = Math.floor(x / FW), fx = x % FW;
-      const to = (hull && y >= HULL_Y && hull.get(k)) || (vest && inBox(VEST_BOX[f], fx, y) && vest.get(k)) || (shorts && inBox(SHORTS_BOX[f], fx, y) && shorts.get(k));
-      if (to) { d[i] = to[0]; d[i + 1] = to[1]; d[i + 2] = to[2]; }
+    const at = (x, y) => (y * W + x) * 4;
+    const put = (i, rgb) => { d[i] = rgb[0]; d[i + 1] = rgb[1]; d[i + 2] = rgb[2]; };
+    const shift = (i, s) => put(i, shiftRgb([d[i], d[i + 1], d[i + 2]], s));
+    const VC = new Set(VEST_COLS.map(h => parseInt(h.slice(1), 16))), SC = new Set(SHORTS_COLS.map(h => parseInt(h.slice(1), 16)));
+    for (let f = 0; f < NFR; f++) {
+      const o = f * FW, n = PIX.nose[f];
+      if (ski.p) for (const p of PIX.hull[f]) shift(at(o + p.x, p.y), ski.p(n.x - p.x, p.y - n.y, p.s));
+      if (hair.a || hair.g) for (const p of PIX.hair[f]) put(at(o + p.x, p.y), hairRgb(hair, p.s, p.v));
+      if (suit.vest || suit.vp || suit.shorts) for (const [box, cols, pick] of [[VEST_BOX[f], VC, (x, y) => suit.vp ? suit.vp(x, y) : suit.vest], [SHORTS_BOX[f], SC, () => suit.shorts]]) {
+        for (let y = box[1]; y < box[3]; y++) for (let x = box[0]; x < box[2]; x++) {
+          const i = at(o + x, y);
+          if (!d[i + 3] || !cols.has((d[i] << 16) | (d[i + 1] << 8) | d[i + 2])) continue;
+          const s = pick(x - box[0], y - box[1]);
+          if (s) shift(i, s);
+        }
+      }
     }
     g.putImageData(id, 0, 0);
     out = c;
   }
   tintCache.set(key, out);
   return out;
+}
+// ---------- decals & legendary effects ----------
+const DECAL_PAL = { r: '#e8365f', h: '#ff9fb4', y: '#ffd35c', n: '#ff9a3d', g: '#4cc46a', b: '#5fa8ff', w: '#ffffff', k: '#2a1f3d', p: '#ff7aa8', c: '#8ff0ff', l: '#c9a2ff' };
+function outlined(src, col = '#2a1f3d') {   // 1px dark outline around any drawn pixel
+  const w = src.width + 2, h = src.height + 2, c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d'); g.drawImage(src, 1, 1);
+  const d = g.getImageData(0, 0, w, h).data, on = (x, y) => x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] > 0;
+  g.fillStyle = col;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (!on(x, y) && (on(x - 1, y) || on(x + 1, y) || on(x, y - 1) || on(x, y + 1))) g.fillRect(x, y, 1, 1);
+  return c;
+}
+const DECAL_ART = {
+  heart: ['hr.rr', 'rrrrr', 'rrrrr', '.rrr.', '..r..'],
+  star: ['..y..', '.yyy.', 'yyyyy', '.yyy.', '.y.y.'],
+  smiley: ['.yyyy.', 'ykyyky', 'yyyyyy', 'ykyyky', 'yykkyy', '.yyyy.'],
+  flower: ['.p.p.', 'ppppp', '.pyp.', 'ppppp', '.p.p.'],
+  moon: ['..yy', '.yy.', 'yy..', 'yy..', '.yy.', '..yy'],
+  sun: ['n.n.n', '.yyy.', 'nyyyn', '.yyy.', 'n.n.n'],
+  clover: ['gg.gg', 'gg.gg', '..g..', 'gg.gg', 'gg.gg'],
+  bolt: ['..yy', '.yy.', 'yyyy', '.yy.', 'yy..', 'y...'],
+  music: ['.wwww', '.w..w', '.w..w', 'ww.ww', 'ww.ww'],
+  paw: ['w.w.w', '.....', '.www.', 'wwwww', '.www.'],
+  cherry: ['...g..', '..g.g.', '.g...g', 'hr..hr', 'rr..rr'],
+  anchor: ['..w..', '.w.w.', '..w..', 'w.w.w', '.www.'],
+  fish: ['.nnn.n', 'nknnnn', 'nnnnnn', '.nnn.n'],
+  one: ['.www.', 'wwrww', 'wrrww', 'wwrww', 'wrrrw', '.www.'],
+  crown: ['y..y..y', 'yy.y.yy', 'yyyyyyy', 'yryyyry', 'yyyyyyy'],
+  rainbow: ['.rrrrr.', 'rnnnnnr', 'nyyyyyn', 'yg...gy', 'g.....g'],
+  comet: ['....y..', '...yyy.', 'nnyyyyy', '...yyy.', '...y.y.'],
+  diamond: ['.wccc.', 'wccccc', '.cccc.', '..cc..'],
+  bow: ['pp...pp', 'ppprppp', 'pp.r.pp', '..r.r..'],
+  lips: ['.rr.rr.', 'rhrrrhr', '.rrrrr.', '..rrr..'],
+};
+for (const k in DECAL_ART) DECAL_ART[k] = outlined(pixelArt(DECAL_ART[k], DECAL_PAL));
+const DECAL_AT = [[51, 63], [53, 63], [47, 58], [48, 62], [52, 64]];   // per frame: decal centre on the side of the hull
+const decalCache = new Map();
+function decalLayer(id) {   // the decal on every frame, clipped to the hull
+  const it = ITEM[id];
+  if (!it || !it.art) return null;
+  if (decalCache.has(id)) return decalCache.get(id);
+  const a = DECAL_ART[it.art], c = document.createElement('canvas'); c.width = img.player.width; c.height = img.player.height;
+  const g = c.getContext('2d');
+  DECAL_AT.forEach(([x, y], f) => g.drawImage(a, f * FW + x - Math.floor(a.width / 2), y - Math.floor(a.height / 2)));
+  g.globalCompositeOperation = 'destination-in'; g.drawImage(PIX.mask, 0, 0);
+  decalCache.set(id, c);
+  return c;
+}
+const WINGS = [0, 1, 2, 3].map(k => {   // feathered wing, four flap positions
+  const c = document.createElement('canvas'); c.width = 32; c.height = 32;
+  const g = c.getContext('2d');
+  for (let i = 0; i < 6; i++) {
+    const a = (100 + k * 14 + i * 12) * Math.PI / 180, L = 20 - i * 2.4;
+    for (let t = 0; t <= L; t += 0.4) {
+      const x = Math.round(28 + Math.cos(a) * t), y = Math.round(28 - Math.sin(a) * t);
+      g.fillStyle = t > L - 3 ? '#ff8fb8' : t > L - 5 ? '#ffd0e0' : '#ffffff';
+      g.fillRect(x, y, 2, 1);
+      if (t < L * 0.6) g.fillRect(x, y + 1, 2, 1);
+    }
+  }
+  g.fillStyle = '#ffe066'; g.fillRect(26, 26, 3, 3);
+  return outlined(c);
+});
+const WING_AT = [[14, 53], [17, 54], [11, 48], [14, 52], [12, 48]];   // per frame: wing root at the back of the seat
+const FLAP = [0, 1, 2, 3, 2, 1];
+function drawWings(f, x, y, fast) {
+  const w = WINGS[FLAP[Math.floor(animT * (fast ? 16 : 5)) % FLAP.length]];
+  ctx.drawImage(w, x + WING_AT[f][0] - 29, y + WING_AT[f][1] - 29);
+}
+function drawGlint(f, x, y) {   // a bright band sweeps along the gold hull
+  const s = (animT % 1.8) / 1.8 * 150 - 35;
+  for (const p of PIX.hull[f]) {
+    const d = p.x + (p.y - 40) * 0.7 - s;
+    if (d >= 0 && d < 4) { ctx.fillStyle = d < 1.5 ? '#ffffff' : '#fff6b8'; ctx.fillRect(x + p.x, y + p.y, 1, 1); }
+  }
+}
+function drawStars(f, x, y) {   // galaxy vest twinkles
+  for (const p of PIX.vest[f]) {
+    const r = hash(p.x + 3, p.y + 50);
+    if (r > 0.2) continue;
+    const tw = Math.sin(animT * 5 + r * 90);
+    if (tw > -0.3) { ctx.fillStyle = tw > 0.55 ? '#ffffff' : r < 0.07 ? '#ff9fd8' : '#b9a8ff'; ctx.fillRect(x + p.px, y + p.py, 1, 1); }
+  }
+}
+const UNI = [];
+for (let h = 0; h < 36; h++) UNI.push(['hsl(' + h * 10 + ',95%,74%)', 'hsl(' + h * 10 + ',70%,50%)']);
+function drawUnicorn(f, x, y) {   // rainbow flows down the hair
+  for (const p of PIX.hair[f]) {
+    ctx.fillStyle = UNI[Math.floor((((p.v * 320 - animT * 150) % 360) + 360) % 360 / 10)][p.s];
+    ctx.fillRect(x + p.x, y + p.y, 1, 1);
+  }
 }
 
 const POST_ART = POSTS.map((POST, k) => {    // red & white channel marker; day-mark green / yellow / red by height
@@ -529,7 +796,7 @@ let pending = 0;
 for (const k in ASSETS) {
   pending++;
   const i = new Image();
-  i.onload = () => { if (--pending === 0) { buildSilhouettes(); boot(); } };
+  i.onload = () => { if (--pending === 0) { buildSilhouettes(); buildPix(); boot(); } };
   i.src = ASSETS[k];
   img[k] = i;
 }
@@ -634,7 +901,7 @@ let lastPressId = null, jumpOwner = null;
 let obstacles = [], nextGap = 0;
 let particles = [], popups = [], dolphins = [];
 let shake = 0, deadT = 0, newBest = false, bestAnnounced = false, nextMilestone = 100;
-let btnT = 0, wakeT = 0, flash = 0, startBest = 0;
+let btnT = 0, wakeT = 0, fwT = 0, flash = 0, startBest = 0;
 let streak = 0, lastWord = '', poopyShown = false, dolphinT = 0;
 let dir = null;           // pacing director
 let nearCount = 0, runShells = 0;
@@ -654,7 +921,7 @@ function resetRun() {
   nearCount = 0; runShells = 0;
   newDirector();
 }
-function startGame() { resetRun(); state = 'play'; paused = false; }
+function startGame() { refundNote = 0; resetRun(); state = 'play'; paused = false; }
 
 // ---------- pacing director ----------
 // Alternates calm stretches (single obstacles, roomy gaps) with build-ups (combos, tighter gaps).
@@ -729,13 +996,33 @@ function burst(x, y, n, vx0, spread, cols, up = 150) {
 function sparkle(x, y, n, cols) {
   for (let i = 0; i < n; i++) {
     const a = Math.random() * Math.PI * 2, v = 30 + Math.random() * 70;
-    particles.push({ kind: 'spark', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.45 + Math.random() * 0.4, age: 0, c: cols[i % cols.length], s: Math.random() < 0.4 ? 2 : 1 });
+    particles.push({ kind: 'spark', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.45 + Math.random() * 0.4, age: 0, c: cols[(i + Math.floor(Math.random() * cols.length)) % cols.length], s: Math.random() < 0.4 ? 2 : 1 });
   }
 }
 function hearts(x, y, n, spread = 60) {
   for (let i = 0; i < n; i++) particles.push({ kind: 'heart', x: x + (Math.random() * 2 - 1) * spread, y: y + Math.random() * 20, vx: (Math.random() * 2 - 1) * 12, vy: -25 - Math.random() * 30, life: 1.4 + Math.random() * 1.0, age: 0, ph: Math.random() * 6 });
 }
 
+const WAKE_ICON = {
+  heart: [MINI_HEART],
+  star: [pixelArt(['..y..', '.yyy.', 'yyyyy', '.yyy.', '.y.y.'], { y: '#ffe066' })],
+  note: [pixelArt(['.ww.', '.w.w', '.w..', 'ww..', 'ww..'], { w: '#ffffff' })],
+  daisy: [pixelArt(['.p.', 'pyp', '.p.'], { p: '#ffffff', y: '#ffd35c' }), pixelArt(['p.p', '.y.', 'p.p'], { p: '#ffffff', y: '#ffd35c' })],
+  petal: [pixelArt(['pp.', '.pp'], { p: '#ffb8d0' }), pixelArt(['.pp', 'pp.'], { p: '#ff8fb8' })],
+  leaf: [pixelArt(['.gg', 'gd.'], { g: '#7be08a', d: '#3a9a5a' }), pixelArt(['gg.', '.dg'], { g: '#7be08a', d: '#3a9a5a' })],
+  flake: [pixelArt(['..w..', 'w.w.w', '.www.', 'w.w.w', '..w..'], { w: '#ffffff' }), pixelArt(['.w.w.', 'w.w.w', '.www.', 'w.w.w', '.w.w.'], { w: '#e8f4ff' })],
+  fly: [pixelArt(['pp.pp', 'ppkpp', '.pkp.'], { p: '#c9a2ff', k: '#2a1f3d' }), pixelArt(['.pkp.', '.pkp.', '..k..'], { p: '#c9a2ff', k: '#2a1f3d' })],
+  coin: [pixelArt(['.yy.', 'yhyy', 'yyyy', '.yy.'], { y: '#ffc23d', h: '#fff6b8' }), pixelArt(['.y.', 'yhy', 'yyy', '.y.'], { y: '#ffc23d', h: '#fff6b8' }), pixelArt(['y', 'h', 'y', 'y'], { y: '#e0a020', h: '#fff6b8' })],
+};
+function wakeFx(fx, wx) {
+  const r = Math.random;
+  if (fx.k === 'spark') particles.push({ kind: 'spark', x: wx - r() * 10, y: LANE - 4 - r() * 14, vx: -speed * 0.45, vy: -10 - r() * 20, life: 0.35 + r() * 0.3, age: 0, c: fx.c[Math.floor(r() * fx.c.length)], s: r() < 0.4 ? 2 : 1, drag: false });
+  else if (fx.k === 'bubble') particles.push({ kind: 'bubble', x: wx - r() * 6, y: LANE - 2, vx: -speed * 0.4, vy: -18 - r() * 22, life: 0.7 + r() * 0.4, age: 0, ph: r() * 6, s: r() < 0.5 ? 1 : 2 });
+  else if (fx.k === 'icon') particles.push({ kind: 'icon', imgs: WAKE_ICON[fx.img], mv: fx.mv, x: wx - r() * 8, y: LANE - 4 - r() * 4, vx: 0, drift: -speed * 0.4, vy: fx.mv === 'rise' ? -22 - r() * 20 : -55 - r() * 45, life: fx.mv === 'rise' ? 0.8 + r() * 0.3 : 1.3, age: 0, ph: r() * 6 });
+  else if (fx.k === 'confetti') particles.push({ kind: 'confetti', mv: 'flutter', c: RAINBOW[Math.floor(r() * RAINBOW.length)], x: wx - r() * 8, y: LANE - 3, vx: 0, drift: -speed * 0.4, vy: -60 - r() * 50, life: 1.3, age: 0, ph: r() * 6 });
+  else if (fx.k === 'ember') particles.push({ kind: 'ember', x: wx - r() * 6, y: LANE - 2 - r() * 4, vx: -speed * 0.4 - r() * 20, vy: -35 - r() * 45, life: 0.4 + r() * 0.35, age: 0, s: r() < 0.3 ? 2 : 1 });
+}
+const EMBER = ['#fff6b8', '#ffd35c', '#ffa64d', '#ff5c3a', '#a8344a'];
 function die() {
   state = 'dead'; deadT = 0; shake = 0.4; flash = 0.12;
   sfx.crash();
@@ -817,29 +1104,47 @@ function update(dt) {
   }
   landT = Math.max(0, landT - dt);
 
-  // wake spray (rainbow during a streak, otherwise her chosen wake)
+  // wake spray (rainbow during a streak, otherwise her chosen wake) and legendary sparkle
+  const eqNow = look();
   if (!P.airborne && state !== 'dead') {
     wakeT -= dt;
-    const wake = look().wake, wx = PX + 6;
+    const wk = ITEM[eqNow.wake] || ITEM['wake-classic'], wx = PX + 6;
     while (wakeT <= 0) {
       wakeT += state === 'play' ? 0.025 : 0.05;
-      const rb = (streak >= 3 && state === 'play') || wake === 'wake-rainbow';
-      const c = rb ? RAINBOW[Math.floor(Math.random() * RAINBOW.length)] : Math.random() < 0.5 ? '#ffffff' : '#c9f3f0';
+      const rb = streak >= 3 && state === 'play';
+      const c = rb ? RAINBOW[Math.floor(Math.random() * RAINBOW.length)] : wk.spray[Math.floor(Math.random() * wk.spray.length)];
       particles.push({ x: wx + Math.random() * 4, y: LANE + 1, vx: -speed * 0.35 - Math.random() * 40, vy: -20 - Math.random() * 70,
         life: 0.3 + Math.random() * 0.25, age: 0, c, s: Math.random() < 0.25 ? 2 : 1 });
-      const r = Math.random();
-      if (wake === 'wake-sparkle' && r < 0.2) particles.push({ kind: 'spark', x: wx - Math.random() * 10, y: LANE - 4 - Math.random() * 14, vx: -speed * 0.45, vy: -10 - Math.random() * 20, life: 0.35 + Math.random() * 0.3, age: 0, c: ['#fff6b8', '#ffd35c', '#ffffff'][Math.floor(Math.random() * 3)], s: Math.random() < 0.4 ? 2 : 1, drag: false });
-      if (wake === 'wake-bubbles' && r < 0.18) particles.push({ kind: 'bubble', x: wx - Math.random() * 6, y: LANE - 2, vx: -speed * 0.4, vy: -18 - Math.random() * 22, life: 0.7 + Math.random() * 0.4, age: 0, ph: Math.random() * 6, s: Math.random() < 0.5 ? 1 : 2 });
-      if (wake === 'wake-hearts' && r < 0.1) particles.push({ kind: 'heart', mini: true, drift: -speed * 0.4, x: wx - Math.random() * 6, y: LANE - 6, vx: 0, vy: -22 - Math.random() * 20, life: 0.7 + Math.random() * 0.3, age: 0, ph: Math.random() * 6 });
+      if (wk.fx && Math.random() < wk.fx.p) wakeFx(wk.fx, wx);
+      if (eqNow.ski === 'ski-gold' && Math.random() < 0.04) { const h = PIX.hull[playerFrame()], q = h[Math.floor(Math.random() * h.length)]; sparkle(PX + q.x, playerTop() + q.y, 1, ['#fff6b8', '#ffffff']); }
+      if (eqNow.hair === 'hair-unicorn' && Math.random() < 0.03) { const h = PIX.hair[playerFrame()], q = h[Math.floor(Math.random() * h.length)]; sparkle(PX + q.x, playerTop() + q.y, 1, RAINBOW); }
+    }
+    if (wk.id === 'wake-fireworks') {
+      fwT -= dt;
+      if (fwT <= 0) {
+        fwT = 0.45 + Math.random() * 0.35;
+        particles.push({ kind: 'rocket', x: wx - Math.random() * 6, y: LANE - 2, vx: -speed * 0.3 - 25, vy: -170 - Math.random() * 50, life: 0.4 + Math.random() * 0.15, age: 0, c: RAINBOW[Math.floor(Math.random() * RAINBOW.length)] });
+      }
     }
   }
+  if (P.airborne && eqNow.decal === 'decal-wings' && Math.random() < 0.5) sparkle(PX + WING_AT[2][0] - 6, playerTop() + WING_AT[2][1] - 8, 1, ['#ffffff', '#ffb8d0']);
   for (const p of particles) {
     p.age += dt;
     if (p.kind === 'spark') { if (p.drag !== false) { p.vx *= Math.exp(-3 * dt); p.vy *= Math.exp(-3 * dt); } }
     else if (p.kind === 'heart') { p.vx = (p.drift || 0) + Math.sin(p.age * 3 + p.ph) * 14; }
     else if (p.kind === 'bubble') { p.vy *= Math.exp(-1.5 * dt); p.x += Math.sin(p.age * 9 + p.ph) * 0.3; }
+    else if (p.kind === 'icon' || p.kind === 'confetti') {
+      if (p.mv === 'rise') p.vx = p.drift + Math.sin(p.age * 3 + p.ph) * 14;
+      else { p.vy = Math.min(22, p.vy + 90 * dt); p.vx = p.drift + Math.sin(p.age * 5 + p.ph) * 22; }
+    }
+    else if (p.kind === 'ember') p.vy *= Math.exp(-1.2 * dt);
+    else if (p.kind === 'rocket') { p.vy += 120 * dt; if (Math.random() < 0.6) particles.push({ kind: 'spark', x: p.x, y: p.y + 2, vx: p.vx * 0.5, vy: 10, life: 0.2, age: 0, c: '#fff6b8', s: 1 }); }
     else p.vy += 420 * dt;
     p.x += p.vx * dt; p.y += p.vy * dt;
+  }
+  for (const p of particles) if (p.kind === 'rocket' && p.age >= p.life && !p.done) {   // firework bursts
+    p.done = true;
+    for (let i = 0; i < 18; i++) { const a = i / 18 * Math.PI * 2, v = 55 + Math.random() * 25; particles.push({ kind: 'spark', x: p.x, y: p.y, vx: Math.cos(a) * v + p.vx * 0.6, vy: Math.sin(a) * v, life: 0.5 + Math.random() * 0.3, age: 0, c: i % 3 ? p.c : '#ffffff', s: 1 }); }
   }
   particles = particles.filter(p => p.age < p.life && p.y < LANE + 12);
   for (const p of popups) p.age += dt;
@@ -980,12 +1285,26 @@ function look() {   // what she's wearing; in the shop, the selected item is pre
   return eq;
 }
 function drawPlayer() {
-  const f = playerFrame(), eq = look();
-  ctx.drawImage(tintedPlayer(eq.ski, eq.suit), f * FW, 0, FW, FH, PX, playerTop(), FW, FH);
+  const f = playerFrame(), eq = look(), x = PX, y = playerTop();
+  if (eq.decal === 'decal-wings') drawWings(f, x, y, P.airborne);
+  ctx.drawImage(tintedPlayer(eq), f * FW, 0, FW, FH, x, y, FW, FH);
+  const dl = decalLayer(eq.decal);
+  if (dl) ctx.drawImage(dl, f * FW, 0, FW, FH, x, y, FW, FH);
+  if (eq.ski === 'ski-gold') drawGlint(f, x, y);
+  if (eq.suit === 'suit-galaxy') drawStars(f, x, y);
+  if (eq.hair === 'hair-unicorn') drawUnicorn(f, x, y);
 }
 function drawParticles() {
   for (const p of particles) {
     if (p.kind === 'heart') { if (p.age < p.life * 0.8 || Math.floor(p.age * 14) % 2) ctx.drawImage(p.mini ? MINI_HEART : HEART, Math.round(p.x) - 3, Math.round(p.y) - 3); continue; }
+    if (p.kind === 'icon') {
+      const im = p.imgs[Math.floor(p.age * 7 + p.ph) % p.imgs.length];
+      if (p.age < p.life * 0.8 || Math.floor(p.age * 14) % 2) ctx.drawImage(im, Math.round(p.x - im.width / 2), Math.round(p.y - im.height / 2));
+      continue;
+    }
+    if (p.kind === 'ember') { ctx.fillStyle = EMBER[Math.min(4, Math.floor(p.age / p.life * 5))]; ctx.fillRect(Math.round(p.x), Math.round(p.y), p.s, p.s); continue; }
+    if (p.kind === 'confetti') { ctx.fillStyle = p.c; const fl = Math.floor(p.age * 10 + p.ph) % 2; ctx.fillRect(Math.round(p.x), Math.round(p.y), fl ? 2 : 1, fl ? 1 : 2); continue; }
+    if (p.kind === 'rocket') { ctx.fillStyle = p.c; ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 2); continue; }
     if (p.kind === 'bubble') {
       const x = Math.round(p.x), y = Math.round(p.y), r = p.s;
       ctx.fillStyle = '#e9fcf9';
@@ -1053,18 +1372,25 @@ function drawShopButton() {
   drawShells(save.shells, b.x + 84, b.y + 7, '#ffffff', '#7a3b2e');
 }
 function owns(id) { return save.owned.includes(id); }
+const PER_PAGE = 9;
+let shopPage = 0;
+const pageOf = id => Math.max(0, Math.floor(SHOP[shopTab].items.findIndex(it => it.id === id) / PER_PAGE));
+const shopPages = () => Math.max(1, Math.ceil(SHOP[shopTab].items.length / PER_PAGE));
 function shopLayout() {
   const L = { tabs: [], tiles: [] }, x0 = 8, w = VW - 16;
-  const tabW = Math.floor((w - 8) / SLOTS.length);
-  SLOTS.forEach((k, i) => L.tabs.push({ k, x: x0 + 4 + i * tabW, y: 44, w: tabW - 2, h: 18 }));
-  const tw = Math.floor((w - 16) / 3), th = 42;
-  SHOP[shopTab].items.forEach((it, i) => L.tiles.push({ it, x: x0 + 4 + (i % 3) * (tw + 4), y: 66 + Math.floor(i / 3) * (th + 4), w: tw, h: th }));
+  const tabW = Math.floor((w - 8) / 3);
+  SLOTS.forEach((k, i) => L.tabs.push({ k, x: x0 + 4 + (i % 3) * tabW, y: 42 + Math.floor(i / 3) * 18, w: tabW - 2, h: 16 }));
+  const tw = Math.floor((w - 16) / 3), th = 46;
+  SHOP[shopTab].items.slice(shopPage * PER_PAGE, (shopPage + 1) * PER_PAGE)
+    .forEach((it, i) => L.tiles.push({ it, x: x0 + 4 + (i % 3) * (tw + 4), y: 82 + Math.floor(i / 3) * (th + 4), w: tw, h: th }));
+  L.prev = { x: x0 + 6, y: 232, w: 34, h: 18 };
+  L.next = { x: x0 + w - 40, y: 232, w: 34, h: 18 };
   L.back = { x: 12, y: 404, w: 80, h: 30 };
   L.act = { x: VW - 12 - 116, y: 404, w: 116, h: 30 };
   return L;
 }
 let shopMsg = '';
-function openShop() { state = 'shop'; shopTab = 'ski'; shopSel = save.eq.ski; shopMsgT = 0; paused = false; }
+function openShop() { state = 'shop'; shopTab = 'ski'; shopSel = save.eq.ski; shopPage = pageOf(shopSel); shopMsgT = 0; paused = false; }
 function closeShop() { state = 'title'; shopSel = null; }
 function shopAction() {
   const it = ITEM[shopSel];
@@ -1077,50 +1403,116 @@ function shopAction() {
   save.shells -= it.price; save.owned.push(it.id); save.eq[it.slot] = it.id;
   commitSave();
   sfx.best();
-  shopMsg = 'YOURS!'; shopMsgT = 1.4;
-  sparkle(PX + 40, playerTop() + 36, 22, RAINBOW);
+  shopMsg = it.leg ? 'LEGENDARY! YOURS!' : 'YOURS!'; shopMsgT = 1.4;
+  sparkle(PX + 40, playerTop() + 36, it.leg ? 40 : 22, RAINBOW);
 }
 function shopTap(p) {
   const L = shopLayout();
-  for (const t of L.tabs) if (inRect(p, t)) { shopTab = t.k; shopSel = save.eq[t.k]; shopMsgT = 0; sfx.tick(); return; }
+  for (const t of L.tabs) if (inRect(p, t)) { shopTab = t.k; shopSel = save.eq[t.k]; shopPage = pageOf(shopSel); shopMsgT = 0; sfx.tick(); return; }
   for (const t of L.tiles) if (inRect(p, t)) {
     shopSel = t.it.id; shopMsgT = 0;
     if (owns(t.it.id)) shopAction(); else sfx.tick();
     return;
   }
+  if (shopPages() > 1) {
+    if (inRect(p, L.prev) && shopPage > 0) { shopPage--; sfx.tick(); return; }
+    if (inRect(p, L.next) && shopPage < shopPages() - 1) { shopPage++; sfx.tick(); return; }
+  }
   if (inRect(p, L.back)) { closeShop(); sfx.tick(); return; }
   if (shopSel && inRect(p, L.act)) shopAction();
 }
+// ---------- shop tile icons (30x16) ----------
+const iconCache = new Map();
+function iconCanvas(it) {
+  if (iconCache.has(it.id)) return iconCache.get(it.id);
+  const c = document.createElement('canvas'); c.width = 30; c.height = 16;
+  const g = c.getContext('2d'), px = (x, y, rgb) => { g.fillStyle = css(rgb); g.fillRect(x, y, 1, 1); };
+  const HULL_ROWS = y => y < 3 ? 0 : y < 11 ? 2 : y < 13 ? 1 : 5;
+  const hullSwatch = p => { for (let y = 0; y < 16; y++) for (let x = 0; x < 30; x++) { const s = HULL_ROWS(y), base = hexRgb(HULL_COLS[s]); px(x, y, p ? shiftRgb(base, p(29 - x + 4, y, s)) : base); } };
+  if (it.slot === 'ski') hullSwatch(it.p);
+  else if (it.slot === 'decal') { hullSwatch(null); if (it.art) { const a = DECAL_ART[it.art]; g.drawImage(a, 15 - Math.floor(a.width / 2), 8 - Math.floor(a.height / 2)); } }
+  else if (it.slot === 'suit') {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 30; x++) {
+      if (x < 17) { const s = it.vp ? it.vp(x, y) : it.vest, base = hexRgb(y < 2 ? VEST_COLS[1] : VEST_COLS[0]); px(x, y, s ? shiftRgb(base, s) : base); }
+      else { const base = hexRgb(y > 12 ? SHORTS_COLS[1] : SHORTS_COLS[0]); px(x, y, it.shorts ? shiftRgb(base, it.shorts) : base); }
+    }
+  }
+  else if (it.slot === 'hair') {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 30; x++) {
+      const s = (x + Math.floor(y / 5)) % 4 === 0 ? 1 : 0;
+      px(x, y, it.a || it.g ? hairRgb(it, s, y / 15) : hexRgb(s ? HAIR_B[0] : HAIR_A[0]));
+    }
+  }
+  else if (it.slot === 'wake') {
+    g.fillStyle = '#2b93a1'; g.fillRect(0, 0, 30, 16); g.fillStyle = '#5fc7c3'; g.fillRect(0, 12, 30, 1);
+    it.spray.slice(0, 6).forEach((col, i) => { g.fillStyle = col; g.fillRect(2 + (i * 5) % 14, 9 - (i % 2) * 4 - (i % 3), 2, 2); });
+    const fx = it.fx;
+    if (fx && fx.k === 'icon') { const im = WAKE_ICON[fx.img][0]; g.drawImage(im, 22 - Math.floor(im.width / 2), 7 - Math.floor(im.height / 2)); if (fx.img !== 'fly') g.drawImage(im, 18 - Math.floor(im.width / 2), 2); }
+    else if (fx && fx.k === 'bubble') { g.strokeStyle = '#e9fcf9'; g.lineWidth = 1; g.strokeRect(19.5, 4.5, 4, 4); g.strokeRect(24.5, 1.5, 3, 3); }
+    else if (fx && (fx.k === 'spark' || fx.k === 'ember' || fx.k === 'confetti')) {
+      const cols = fx.k === 'ember' ? EMBER : fx.k === 'confetti' ? RAINBOW : fx.c;
+      for (let i = 0; i < 6; i++) { g.fillStyle = cols[i % cols.length]; g.fillRect(18 + (i * 7) % 11, 2 + (i * 5) % 9, fx.k === 'confetti' ? 2 : 1, 1); }
+      if (fx.k === 'spark') { g.fillStyle = cols[0]; g.fillRect(22, 3, 1, 5); g.fillRect(20, 5, 5, 1); }
+    }
+  }
+  iconCache.set(it.id, c);
+  return c;
+}
+function drawIcon(it, x, y) {
+  ctx.drawImage(iconCanvas(it), x, y);
+  if (!it.leg) return;
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, 30, 16); ctx.clip();
+  if (it.id === 'ski-gold') { const s = (animT % 1.8) / 1.8 * 60 - 15; for (let yy = 0; yy < 16; yy++) for (let d = 0; d < 3; d++) { ctx.fillStyle = d ? '#fff6b8' : '#ffffff'; ctx.fillRect(Math.round(x + s - yy * 0.7 + d), y + yy, 1, 1); } }
+  else if (it.id === 'decal-wings') { rect(x, y, 30, 16, '#4147b1'); rect(x, y, 30, 3, '#6084e9'); ctx.drawImage(WINGS[FLAP[Math.floor(animT * 6) % FLAP.length]], x, y - 14); }
+  else if (it.id === 'suit-galaxy') { for (let i = 0; i < 14; i++) { const r = hash(i, 7), tw = Math.sin(animT * 5 + r * 90); if (tw > -0.3) rect(x + (i * 7) % 17, y + (i * 5) % 16, 1, 1, tw > 0.55 ? '#ffffff' : '#b9a8ff'); } }
+  else if (it.id === 'hair-unicorn') { for (let yy = 0; yy < 16; yy++) for (let xx = 0; xx < 30; xx++) { const s = (xx + Math.floor(yy / 5)) % 4 === 0 ? 1 : 0; ctx.fillStyle = UNI[Math.floor((((yy / 15) * 320 - animT * 150) % 360 + 360) % 360 / 10)][s]; ctx.fillRect(x + xx, y + yy, 1, 1); } }
+  else if (it.id === 'wake-fireworks') {
+    rect(x, y, 30, 16, '#2b93a1'); rect(x, y + 12, 30, 1, '#5fc7c3');
+    const ph = animT % 1.2, cx = x + 15, cy = y + 6, col = RAINBOW[Math.floor(animT / 1.2) % 6];
+    if (ph < 0.4) rect(cx, Math.round(y + 14 - ph * 20), 1, 2, col);
+    else { const r = (ph - 0.4) * 12; for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; rect(Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * r), 1, 1, i % 2 ? col : '#ffffff'); } }
+  }
+  ctx.restore();
+}
+function arrowBtn(b, dir, on) {
+  uiBtn(b, '', on, '#5fd3f0', '#13465a');
+  const cx = b.x + b.w / 2, cy = b.y + Math.floor(b.h / 2) - 1;
+  for (let i = 0; i < 5; i++) rect(Math.round(cx + dir * (i - 2)), cy - (4 - i), 1, (4 - i) * 2 + 1, on ? '#ffffff' : '#6d5a6c');
+}
 function drawShop() {
   const L = shopLayout(), ink = '#2a1f3d';
-  panel(8, 8, VW - 16, 230);
+  panel(8, 8, VW - 16, 258);
   text('SHOP', VW / 2, 14, 2, ['#ff7aa8', '#e8365f'], null);
   drawShells(save.shells, VW / 2, 32, ink, null);
   for (const t of L.tabs) {
     const on = t.k === shopTab;
     rect(t.x, t.y, t.w, t.h, ink);
     rect(t.x + 1, t.y + 1, t.w - 2, t.h - 2, on ? '#e8365f' : '#f3dcc0');
-    text(SHOP[t.k].label, t.x + t.w / 2, t.y + 6, 1, on ? '#ffffff' : ink, null);
+    text(SHOP[t.k].label, t.x + t.w / 2, t.y + 5, 1, on ? '#ffffff' : ink, null);
   }
   if (!L.tiles.length) {
-    text('COMING SOON', VW / 2, 110, 2, ['#ff7aa8', '#e8365f'], null);
-    text('HATS ARE BEING DRAWN', VW / 2, 134, 1, '#8a6f8f', null);
+    text('COMING SOON', VW / 2, 130, 2, ['#ff7aa8', '#e8365f'], null);
+    text('HATS ARE BEING DRAWN', VW / 2, 154, 1, '#8a6f8f', null);
   }
   for (const t of L.tiles) {
     const it = t.it, sel = it.id === shopSel, on = save.eq[it.slot] === it.id;
-    rect(t.x, t.y, t.w, t.h, sel ? '#e8365f' : ink);
-    rect(t.x + (sel ? 2 : 1), t.y + (sel ? 2 : 1), t.w - (sel ? 4 : 2), t.h - (sel ? 4 : 2), sel ? '#ffe9a8' : '#ffffff');
-    const sx = Math.round(t.x + t.w / 2 - 14), sy = t.y + 5;
-    rect(sx - 1, sy - 1, 30, 12, ink);
-    if (it.slot === 'ski') { rect(sx, sy, 28, 10, swatch('#4147b1', it.c)); rect(sx, sy, 28, 3, swatch('#6084e9', it.c)); rect(sx, sy + 8, 28, 2, swatch('#35488e', it.c)); }
-    else if (it.slot === 'suit') { rect(sx, sy, 16, 10, swatch('#3691a5', it.vest)); rect(sx + 16, sy, 12, 10, swatch('#ce5159', it.shorts)); }
-    else { rect(sx, sy, 28, 10, '#2b93a1'); it.dots.forEach((c, i) => rect(sx + 2 + (i * 5) % 25, sy + 2 + (i % 2) * 4, 3, 3, c)); if (it.id === 'wake-hearts') ctx.drawImage(MINI_HEART, sx + 18, sy + 3); }
-    text(it.name, t.x + t.w / 2, t.y + 19, 1, ink, null);
-    if (on) text('ON', t.x + t.w / 2, t.y + 30, 1, '#2fbf71', null);
-    else if (owns(it.id)) text('OWNED', t.x + t.w / 2, t.y + 30, 1, '#8a6f8f', null);
-    else drawShells(it.price, t.x + t.w / 2, t.y + 30, save.shells >= it.price ? ink : '#b9a9b8', null);
+    rect(t.x, t.y, t.w, t.h, sel ? '#e8365f' : it.leg ? RAINBOW[Math.floor(animT * 8) % RAINBOW.length] : ink);
+    rect(t.x + (sel || it.leg ? 2 : 1), t.y + (sel || it.leg ? 2 : 1), t.w - (sel || it.leg ? 4 : 2), t.h - (sel || it.leg ? 4 : 2), sel ? '#ffe9a8' : it.leg ? '#fff6dc' : '#ffffff');
+    const sx = Math.round(t.x + t.w / 2 - 15), sy = t.y + 5;
+    rect(sx - 1, sy - 1, 32, 18, ink);
+    drawIcon(it, sx, sy);
+    text(it.name, t.x + t.w / 2, t.y + 25, 1, ink, null);
+    if (on) text('ON', t.x + t.w / 2, t.y + 35, 1, '#2fbf71', null);
+    else if (owns(it.id)) text('OWNED', t.x + t.w / 2, t.y + 35, 1, '#8a6f8f', null);
+    else drawShells(it.price, t.x + t.w / 2, t.y + 35, save.shells >= it.price ? ink : '#b9a9b8', null);
   }
-  if (shopMsgT > 0 && Math.floor(shopMsgT * 6) % 4) text(shopMsg, VW / 2, 222, 1, '#e8365f', null);
+  const pages = shopPages();
+  if (pages > 1) {
+    arrowBtn(L.prev, -1, shopPage > 0);
+    arrowBtn(L.next, 1, shopPage < pages - 1);
+    for (let i = 0; i < pages; i++) { const x = Math.round(VW / 2 - pages * 5 + i * 10 + 2); rect(x, 238, 6, 6, ink); rect(x + 1, 239, 4, 4, i === shopPage ? '#e8365f' : '#f3dcc0'); }
+  }
+  if (shopMsgT > 0 && Math.floor(shopMsgT * 6) % 4) text(shopMsg, VW / 2, 254, 1, '#e8365f', null);
   uiBtn(L.back, 'BACK', true, '#5fd3f0', '#13465a');
   const it = ITEM[shopSel];
   if (it) {
@@ -1141,6 +1533,7 @@ function drawHUD() {
     text('HOLD FOR BIG JUMPS', VW / 2, 205, 1, '#ffffff');
     text('DONT JUMP INTO BIRDS', VW / 2, 216, 1, '#ffffff');
     drawShopButton();
+    if (refundNote > 0) text('PRICE DROP! +' + refundNote + ' SHELLS BACK', VW / 2, 231, 1, '#fff0a0');
     const pb = profBtn(), pl = profLabel();
     text(pl, VW / 2, pb.y + 4, 1, '#ffffff');
     rect(Math.round(VW / 2 - pl.length * 3), pb.y + 14, pl.length * 6 - 1, 1, 'rgba(255,255,255,0.7)');
@@ -1300,7 +1693,7 @@ function boot() {
 window.__jsj = {
   get state() { return state; }, get score() { return score; }, get speed() { return speed; }, get obstacles() { return obstacles; },
   get airborne() { return P.airborne; }, get streak() { return streak; }, get meters() { return meters(); }, get dir() { return dir; },
-  get save() { return save; }, get syncStatus() { return syncStatus; }, openShop, shopTap, shopLayout, tintedPlayer,
+  get save() { return save; }, get syncStatus() { return syncStatus; }, openShop, shopTap, shopLayout, tintedPlayer, ITEM, SHOP, step(sec) { for (let i = 0; i < sec / STEP; i++) update(STEP); draw(); }, get shopPage() { return shopPage; }, set shopPage(v) { shopPage = v; }, set shopTab(v) { shopTab = v; },
   press, release, debug(o) { if ('dist' in o) dist = o.dist; if ('t' in o) t = o.t; if ('streak' in o) streak = o.streak; if ('bonus' in o) bonus = o.bonus; },
 };
 </script>
