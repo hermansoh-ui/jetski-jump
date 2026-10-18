@@ -1011,9 +1011,45 @@ async function signIn(name, pin) {   // returns '' on success or an error messag
   best = Math.max(best, save.best);
   store.set('jetskijump.best', String(best));
   commitSave();
+  if (best > (+store.get(postedKey(), '0') || 0)) postScore(best);   // a best set before signing in still reaches the board
   return '';
 }
-function postScore(m) { if (profile && m > 0) sb('scores', { name: profile.name, meters: m }, 'return=minimal').catch(() => {}); }
+const postedKey = () => 'jetskijump.posted.' + profile.name.toLowerCase();
+function postScore(m) {
+  if (!profile || PREVIEW || !(m > 0)) return;
+  const k = postedKey();
+  sb('scores', { name: profile.name, meters: m }, 'return=minimal')
+    .then(() => { if (m > (+store.get(k, '0') || 0)) store.set(k, String(m)); loadBoard(true); }).catch(() => {});
+}
+// v19: shared scoreboard, every signed-in player's best run
+const HIDDEN = ['zz_test'];   // test rows left in the shared table
+let board = { rows: [], status: 'off', at: 0 }, boardOpen = false;   // status: off | busy | ok | offline
+async function loadBoard(force) {
+  if (board.status === 'busy' || (!force && performance.now() - board.at < 20000)) return;
+  board.status = 'busy';
+  const rows = [], seen = new Set();
+  try {
+    HIDDEN.forEach(n => seen.add(n));
+    for (let i = 0; i < 6 && rows.length < 10; i++) {   // each pass skips names already ranked, so one prolific player can't crowd others out
+      const skip = [...seen].map(n => '"' + n.replace(/["\\]/g, '\\$&') + '"').join(',');
+      const r = await fetch(SB_URL + 'scores?select=name,meters&order=meters.desc&limit=60' + (skip ? '&name=not.in.(' + encodeURIComponent(skip) + ')' : ''), { headers: { apikey: SB_KEY } });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const got = await r.json();
+      for (const s of got) if (!seen.has(s.name)) { seen.add(s.name); rows.push({ name: s.name, m: s.meters }); }
+      if (got.length < 60) break;
+    }
+    board = { rows: rows.slice(0, 10), status: 'ok', at: performance.now() };
+  } catch (e) { board.status = 'offline'; board.at = performance.now(); }
+}
+function boardRows() {   // your own best counts straight away, even before the server has it
+  const rows = board.rows.map(r => ({ ...r }));
+  if (profile && best > 0) {
+    const me = rows.find(r => r.name.toLowerCase() === profile.name.toLowerCase());
+    if (me) me.m = Math.max(me.m, best); else if (board.status === 'ok') rows.push({ name: profile.name, m: best });
+    rows.sort((a, b) => b.m - a.m);
+  }
+  return rows.slice(0, 10);
+}
 
 // ---------- canvas ----------
 const cvs = document.getElementById('c');
@@ -1757,7 +1793,7 @@ const clouds = [
 ];
 
 // ---------- game state ----------
-let state = 'title';      // title | play | dead | shop
+let state = 'title';      // title | play | dead | shop (the scoreboard opens over the title)
 let paused = false;
 let t = 0, dist = 0, speed = 90, score = 0, bonus = 0;
 const P = { lift: 0, vy: 0, airborne: false, holding: false, holdT: 0 };
@@ -2408,6 +2444,54 @@ function drawShells(n, cx, y, col = '#ffffff', outline = '#2a1f3d') {   // shell
 }
 const shopBtn = () => ({ x: Math.round(VW / 2 - 62), y: state === 'dead' ? 258 : 244, w: 124, h: 24 });
 const profBtn = () => ({ x: Math.round(VW / 2 - 90), y: 272, w: 180, h: 16 });
+const topBox = () => ({ x: Math.round(VW / 2 - 90), y: 178, w: 180, h: 60 });
+const boardBack = () => ({ x: 12, y: 404, w: 80, h: 30 });
+const menuBtn = () => ({ x: Math.round(VW / 2 - 40), y: 288, w: 80, h: 16 });
+const MEDAL = ['#ffc45c', '#c9d3e0', '#e0a070'];
+function boardMsg() {
+  return board.status === 'offline' ? 'NO CONNECTION' : board.status !== 'ok' ? 'LOADING...' : 'NO SCORES YET';
+}
+function isMe(r) { return profile && r.name.toLowerCase() === profile.name.toLowerCase(); }
+function drawTopBox() {   // title screen: the top 3, tap for the full board
+  const b = topBox(), rows = boardRows().slice(0, 3);
+  rect(b.x, b.y, b.w, b.h, 'rgba(42,31,61,0.45)');
+  rect(b.x, b.y, b.w, 1, 'rgba(255,255,255,0.5)');
+  text('TOP SCORES', VW / 2, b.y + 5, 1, '#ffe9a8');
+  if (!rows.length) text(boardMsg(), VW / 2, b.y + 26, 1, '#ffffff');
+  rows.forEach((r, i) => {
+    const y = b.y + 16 + i * 11, col = isMe(r) ? '#fff0a0' : '#ffffff';
+    text(String(i + 1), b.x + 10, y, 1, MEDAL[i], '#2a1f3d', 'left');
+    text(r.name.slice(0, 14), b.x + 22, y, 1, col, '#2a1f3d', 'left');
+    text(r.m + 'M', b.x + b.w - 10, y, 1, col, '#2a1f3d', 'right');
+  });
+  text('TAP FOR TOP 10', VW / 2, b.y + b.h - 11, 1, 'rgba(255,255,255,0.75)', null);
+}
+function drawBoard() {
+  rect(0, 0, VW, VH, 'rgba(42,31,61,0.35)');
+  const w = VW - 24, x = 12, y = 52, h = 330, rows = boardRows();
+  panel(x, y, w, h);
+  rect(x - 6, y + 12, w + 12, 24, '#2a1f3d');
+  rect(x - 4, y + 14, w + 8, 20, '#2a8fd6');
+  rect(x - 4, y + 14, w + 8, 3, '#5fd3f0');
+  text('TOP 10', VW / 2, y + 17, 2, '#ffffff', '#13465a');
+  text('ALL PLAYERS - BEST RUN', VW / 2, y + 44, 1, '#8a6f8f', null);
+  if (!rows.length) text(boardMsg(), VW / 2, y + 140, 1, '#2a1f3d', null);
+  rows.forEach((r, i) => {
+    const ry = y + 62 + i * 24, me = isMe(r);
+    if (me) rect(x + 8, ry - 5, w - 16, 18, '#ffe9a8');
+    else if (i % 2 === 0) rect(x + 8, ry - 5, w - 16, 18, 'rgba(42,31,61,0.06)');
+    if (i < 3) { disc(x + 22, ry + 3, 7, '#2a1f3d'); disc(x + 22, ry + 3, 6, MEDAL[i]); text(String(i + 1), x + 22, ry, 1, '#ffffff', '#2a1f3d'); }
+    else text(String(i + 1), x + 22, ry, 1, '#8a6f8f', null);
+    text(r.name.slice(0, 14), x + 36, ry, 1, '#2a1f3d', null, 'left');
+    text(r.m + 'M', x + w - 14, ry, 1, me ? '#e8365f' : '#2a1f3d', null, 'right');
+  });
+  if (!profile) text('SAVE ACROSS DEVICES TO JOIN', VW / 2, y + h - 16, 1, '#e8365f', null);
+  else if (board.status === 'offline' && rows.length) text('OFFLINE - MAY BE OUT OF DATE', VW / 2, y + h - 16, 1, '#8a6f8f', null);
+  uiBtn(boardBack(), 'BACK', true, '#5fd3f0', '#13465a');
+}
+function openBoard() { boardOpen = true; releaseAll(); loadBoard(true); sfx.tick(); }
+function closeBoard() { boardOpen = false; sfx.tick(); }
+function goTitle() { resetRun(); state = 'title'; boardOpen = false; loadBoard(); sfx.tick(); }
 function profLabel() {
   if (!profile) return 'SAVE ACROSS DEVICES';
   const n = profile.name.toUpperCase().slice(0, 12);
@@ -2607,19 +2691,19 @@ function drawShop() {
 const LOGO_TOP = ['#ffe9a8', '#ffc45c', '#ff8f3a'];
 const LOGO_BOT = ['#c9f6ff', '#5fd3f0', '#2a8fd6'];
 function drawHUD() {
-  if (state === 'title') {
+  if (state === 'title' && boardOpen) {
+    drawBoard();
+  } else if (state === 'title') {
     text('JET SKI', VW / 2, 44, 5, LOGO_TOP);
     text('JUMP', VW / 2, 90, 6, LOGO_BOT);
-    if (Math.floor(animT * 2.2) % 2 === 0) text('TAP TO START', VW / 2, 172, 2, '#ffffff');
-    if (best > 0) text('BEST ' + best + 'M', VW / 2, 150, 1, '#ffffff');
-    text('JUMP THE ROCKS', VW / 2, 194, 1, '#ffffff');
-    text('HOLD FOR BIG JUMPS', VW / 2, 205, 1, '#ffffff');
-    text('DONT JUMP INTO BIRDS', VW / 2, 216, 1, '#ffffff');
+    if (Math.floor(animT * 2.2) % 2 === 0) text('TAP TO START', VW / 2, 158, 2, '#ffffff');
+    if (best > 0) text('BEST ' + best + 'M', VW / 2, 144, 1, '#ffffff');
     drawShopButton();
-    if (refundNote > 0) text('PRICE DROP! +' + refundNote + ' SHELLS BACK', VW / 2, 231, 1, '#fff0a0');
+    if (refundNote > 0) text('PRICE DROP! +' + refundNote + ' SHELLS BACK', VW / 2, 292, 1, '#fff0a0');
     const pb = profBtn(), pl = profLabel();
     text(pl, VW / 2, pb.y + 4, 1, '#ffffff');
     rect(Math.round(VW / 2 - pl.length * 3), pb.y + 14, pl.length * 6 - 1, 1, 'rgba(255,255,255,0.7)');
+    drawTopBox();
   } else if (state === 'shop') {
     drawShop();
   } else {
@@ -2648,14 +2732,19 @@ function drawHUD() {
     if (newBest && Math.floor(deadT * 4) % 2 === 0) text('NEW BEST!', VW / 2, y + 108, 2, ['#ff7aa8', '#e8365f'], null);
     drawShells('+' + runShells, VW / 2, y + 128, '#7a3b2e', null);
     if (deadT > 0.7 && Math.floor(deadT * 2.2) % 2 === 0) text('TAP TO RETRY', VW / 2, y + h + 14, 2, '#ffffff');
-    if (deadT > 0.7) drawShopButton();
+    if (deadT > 0.7) {
+      drawShopButton();
+      const mb = menuBtn();
+      text('MENU', VW / 2, mb.y + 4, 1, '#ffffff');
+      rect(Math.round(VW / 2 - 12), mb.y + 14, 23, 1, 'rgba(255,255,255,0.7)');
+    }
   }
   if (paused) {
     rect(0, 0, VW, VH, 'rgba(42,31,61,0.55)');
     text('PAUSED', VW / 2, 150, 3, '#ffffff');
     text('TAP TO RESUME', VW / 2, 186, 2, '#ffffff');
   }
-  if ((state !== 'play' || paused) && state !== 'shop') { drawMute(); drawMusicBtn(); }
+  if ((state !== 'play' || paused) && state !== 'shop' && !boardOpen) { drawMute(); drawMusicBtn(); }
 }
 
 function draw() {
@@ -2673,7 +2762,7 @@ function draw() {
   drawEnvFront();
   drawWarnings();
   ctx.restore();
-  if (state !== 'shop') drawButton();
+  if (state !== 'shop' && !boardOpen) drawButton();
   drawHUD();
   if (flash > 0) rect(0, 0, VW, VH, 'rgba(255,255,255,' + (flash * 4).toFixed(2) + ')');
 }
@@ -2685,7 +2774,7 @@ function toLogical(e) {
 }
 function press(id = 'bot') {
   initAudio();
-  if (state === 'shop' || profOpen()) return;
+  if (state === 'shop' || boardOpen || profOpen()) return;
   btnT = 0.12;
   active.add(id); lastPressId = id;
   if (paused) { paused = false; last = performance.now(); return; }
@@ -2703,6 +2792,9 @@ window.addEventListener('pointerdown', e => {
   if (profOpen()) return;
   const p = toLogical(e);
   if (state === 'shop') { initAudio(); shopTap(p); return; }
+  if (boardOpen) { initAudio(); if (inRect(p, boardBack()) || p.y > 382) closeBoard(); return; }
+  if (state === 'title' && inRect(p, topBox())) { initAudio(); openBoard(); return; }
+  if (state === 'dead' && deadT > 0.7 && inRect(p, menuBtn())) { initAudio(); goTitle(); return; }
   if (state !== 'play' && p.x > VW - 34 && p.y < 30) { initAudio(); toggleMute(); return; }
   if (state !== 'play' && p.x > VW - 50 && p.y < 30) { initAudio(); toggleMusic(); return; }
   if ((state === 'title' || (state === 'dead' && deadT > 0.7)) && inRect(p, shopBtn())) { initAudio(); openShop(); sfx.tick(); return; }
@@ -2716,6 +2808,7 @@ const JUMP_KEYS = ['Space', 'ArrowUp', 'KeyW', 'Enter'];
 window.addEventListener('keydown', e => {
   if (profOpen()) { if (e.code === 'Escape') closeProf(); return; }
   if (state === 'shop') { if (e.code === 'Escape' || e.code === 'Backspace') closeShop(); return; }
+  if (boardOpen) { if (['Escape', 'Backspace', ...JUMP_KEYS].includes(e.code)) { e.preventDefault(); closeBoard(); } return; }
   if (e.repeat) { if (JUMP_KEYS.includes(e.code)) e.preventDefault(); return; }
   if (JUMP_KEYS.includes(e.code)) { e.preventDefault(); press('key:' + e.code); }
   else if (e.code === 'KeyM') toggleMute();
@@ -2775,6 +2868,7 @@ function frame(now) {
 function boot() {
   resize();
   if (profile) signIn(profile.name, profile.pin);
+  if (!PREVIEW) loadBoard(true);
   buildSea();
   last = performance.now();
   requestAnimationFrame(frame);
@@ -2783,7 +2877,7 @@ function boot() {
 window.__jsj = {
   get state() { return state; }, get score() { return score; }, get speed() { return speed; }, get obstacles() { return obstacles; },
   get airborne() { return P.airborne; }, get emote() { return emote; }, startEmote, visFrame, get streak() { return streak; }, get meters() { return meters(); }, get dir() { return dir; },
-  get save() { return save; }, get syncStatus() { return syncStatus; }, get musicNow() { return musicNow; }, get musicLoading() { return musicLoading; }, songWanted, toggleMusic, openShop, shopTap, shopLayout, tintedPlayer, ITEM, SHOP, step(sec) { for (let i = 0; i < sec / STEP; i++) update(STEP); draw(); }, get shopPage() { return shopPage; }, set shopPage(v) { shopPage = v; }, set shopTab(v) { shopTab = v; },
+  get save() { return save; }, get board() { return board; }, get boardOpen() { return boardOpen; }, boardRows, openBoard, goTitle, get syncStatus() { return syncStatus; }, get musicNow() { return musicNow; }, get musicLoading() { return musicLoading; }, songWanted, toggleMusic, openShop, shopTap, shopLayout, tintedPlayer, ITEM, SHOP, step(sec) { for (let i = 0; i < sec / STEP; i++) update(STEP); draw(); }, get shopPage() { return shopPage; }, set shopPage(v) { shopPage = v; }, set shopTab(v) { shopTab = v; },
   press, release, debug(o) { if ('dist' in o) dist = o.dist; if ('t' in o) t = o.t; if ('streak' in o) streak = o.streak; if ('bonus' in o) bonus = o.bonus; },
 };
 </script>
