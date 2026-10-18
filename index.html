@@ -773,6 +773,10 @@ const SKI_PAT = {
 const vSolid = (vest, shorts) => ({ vest, shorts });
 const VWHITE = sh(200, 0.1, 1.5, 0.1), VBLACK = sh(260, 0.15, 0.55);
 // hair: light & dark shade colours, or g = gradient stops from crown to tips
+// v17: music follows the same tiers as everything else (7 common, 7 nice, 4 rare, 1 legendary)
+const MUSIC_TIER = { waltz: C1, hammock: C1, clockwork: C1, burglar: C1, cartridge: C1, coconut: C1, sleepy: C1,
+  throttle: C2, victory: C2, golden: C2, mirrorball: C2, openseas: C2, bamboo: C2, rainy: C2,
+  haunted: C3, thunder: C3, turbo: C3, stardust: C3, kolo: LEG };
 const SHOP = {
   ski: { label: 'JET SKI', items: [
     { id: 'ski-blue', name: 'OCEAN', price: 0 },
@@ -919,7 +923,8 @@ const SHOP = {
     { id: 'wake-fireworks', name: 'FIREWORKS', price: LEG, spray: ['#ffffff', '#c9f3f0'], leg: true },
   ] },
   hat: { label: 'HATS', items: [] },
-  music: { label: 'MUSIC', items: SONGS.map((s, i) => ({ id: 'music-' + s.id, name: s.name, mood: s.mood, song: s.id, hue: (i * 137) % 360, price: i === 0 ? 0 : i <= 10 ? C1 : C2 })) },   // chiptune-v3 + songs-v3
+  music: { label: 'MUSIC', items: SONGS.map((s, i) => ({ id: 'music-' + s.id, name: s.name, mood: s.mood, song: s.id, hue: (i * 137) % 360,
+    price: i === 0 ? 0 : MUSIC_TIER[s.id], leg: MUSIC_TIER[s.id] === LEG })).sort((a, b) => a.price - b.price) },   // chiptune-v3 + songs-v3
   env: { label: 'WORLD', items: [   // whole scene: sky, sea, islands, weather (see ENV below)
     { id: 'env-dreamy', name: 'DREAMY', price: 0 },
     { id: 'env-sunset', name: 'SUNSET', price: 500 },
