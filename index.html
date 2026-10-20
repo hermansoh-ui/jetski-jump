@@ -1838,6 +1838,8 @@ let dir = null;           // pacing director
 let nearCount = 0, runShells = 0, cashCount = 0;
 let shopTab = 'ski', shopSel = null, shopMsgT = 0;
 let scroll = 0;           // total scenery scroll (also runs on title screen)
+let buoy = 0, buoyM = 0, safeT = 0;   // v25: a life buoy banked every BUOY_M clean metres (hold one); safeT = blinking invulnerability after it saves her
+const BUOY_M = 500, SAFE_T = 1.5;
 
 function meters() { return Math.floor(dist / PX_PER_M); }
 
@@ -1850,6 +1852,7 @@ function resetRun() {
   newBest = false; bestAnnounced = false; nextMilestone = 100; startBest = best;
   streak = 0; lastWord = ''; poopyShown = false; dolphinT = 0;
   nearCount = 0; runShells = 0; cashCount = 0;
+  buoy = 0; buoyM = 0; safeT = 0;
   newDirector();
 }
 function startGame() { refundNote = 0; resetRun(); state = 'play'; paused = false; }
@@ -1957,6 +1960,14 @@ function wakeFx(fx, wx) {
   else if (fx.k === 'ember') particles.push({ kind: 'ember', x: wx - r() * 6, y: LANE - 2 - r() * 4, vx: -speed * 0.4 - r() * 20, vy: -35 - r() * 45, life: 0.4 + r() * 0.35, age: 0, s: r() < 0.3 ? 4 : 2 });
 }
 const EMBER = ['#fff6b8', '#ffd35c', '#ffa64d', '#ff5c3a', '#a8344a'];
+function rescue() {   // v25: the buoy takes the hit; obstacles already on her pass without near-miss credit
+  buoy = 0; buoyM = meters(); safeT = SAFE_T; streak = 0; shake = 0.25; flash = 0.08;
+  for (const o of obstacles) if (o.x < PX + FW + speed * SAFE_T) o.done = true;
+  sfx.crash(); sfx.splash();
+  burst(PX + 40, playerTop() + 60, 26, 0, 130, ['#ffffff', '#ff5c5c', '#c9f3f0'], 200);
+  popups.push({ text: 'SAVED!', age: 0, life: 1.4, y: 120, col: ['#ffffff', '#ff8a8a', '#e83636'] });
+  try { if (navigator.vibrate) navigator.vibrate(40); } catch (e) {}
+}
 function die() {
   state = 'dead'; deadT = 0; shake = 0.4; flash = 0.12;
   sfx.crash();
@@ -2108,9 +2119,14 @@ function update(dt) {
     const pb = playerBoxes(playerTop());
     const pf = playerFrame(), pt = playerTop();
     const nb = NEAR_HB.map(b => ({ x: PX + b.x, y: playerTop() + b.y, w: b.w, h: b.h }));
+    safeT = Math.max(0, safeT - dt);
+    if (!buoy && meters() - buoyM >= BUOY_M) {
+      buoy = 1; sfx.milestone();
+      popups.push({ text: 'LIFE BUOY!', age: 0, life: 1.4, y: 74, size: 2, col: ['#ffffff', '#ff8a8a', '#e83636'] });
+    }
     for (const o of obstacles) {
       const ob = obsBox(o, o.type === 'bird' ? birdBob(o) : 0);
-      for (const b of pb) if (hit(b, ob)) { die(); return; }
+      if (safeT <= 0 && pb.some(b => hit(b, ob))) { if (buoy) { rescue(); break; } die(); return; }
       if (o.type === 'rock') {
         if (o.x < PX + FW + NEAR_T && o.x + o.w > PX - NEAR_T) o.visGap = Math.min(o.visGap, rockVisGap(o, pf, pt));
         if (!o.done && o.x + o.w < PX - NEAR_T) { o.done = true; scorePass(o); }
@@ -2397,6 +2413,7 @@ function squash() {   // [sx, sy] stretch on take-off, squash on landing, a litt
   return [1, 1];
 }
 function drawPlayer() {
+  if (safeT > 0 && state === 'play' && Math.floor(safeT * 12) % 2) return;   // v25: blink while the buoy's invulnerability lasts
   const f = visFrame(), eq = look(), x = PX, y = playerTop(), [sx, sy] = squash();
   const sq = sx !== 1 || sy !== 1;
   if (sq) { ctx.save(); const ax = x + FW / 2, ay = y + HULL_B; ctx.translate(ax, ay); ctx.scale(sx, sy); ctx.translate(-ax, -ay); }   // anchored on the hull bottom
@@ -2453,6 +2470,23 @@ function drawMute() {
   rect(x + 1, y + 5, 2, 4, '#ffffff');
   if (muted) { for (let i = 0; i < 7; i++) { rect(x + 10 + i, y + 3 + i, 2, 2, '#e8365f'); rect(x + 16 - i, y + 3 + i, 2, 2, '#e8365f'); } }
   else { rect(x + 10, y + 5, 2, 4, c); rect(x + 13, y + 3, 2, 8, c); }
+}
+const BUOY_IMG = (() => {   // 13x13 red-and-white ring
+  const c = document.createElement('canvas'); c.width = c.height = 13; const g = c.getContext('2d');
+  for (let y = 0; y < 13; y++) for (let x = 0; x < 13; x++) {
+    const dx = x - 6, dy = y - 6, r = Math.hypot(dx, dy);
+    if (r > 6.6 || r < 2.6) continue;
+    const a = Math.atan2(dy, dx) + Math.PI / 4, q = Math.floor(a / (Math.PI / 2) + 4) % 2;
+    g.fillStyle = r > 5.7 || r < 3.4 ? '#2a1f3d' : q ? '#ffffff' : '#e83636'; g.fillRect(x, y, 1, 1);
+  }
+  return c;
+})();
+function drawBuoy() {   // top left: full ring when banked, else a faint ring filling with progress
+  const x = 8, y = 8, S = 2;   // drawn at 2x
+  if (buoy) { ctx.drawImage(BUOY_IMG, x, y, 13 * S, 13 * S); return; }
+  const k = Math.min(1, (meters() - buoyM) / BUOY_M);
+  ctx.globalAlpha = 0.3; ctx.drawImage(BUOY_IMG, x, y, 13 * S, 13 * S); ctx.globalAlpha = 1;
+  const h = Math.round(13 * k); if (h > 0) ctx.drawImage(BUOY_IMG, 0, 13 - h, 13, h, x, y + (13 - h) * S, 13 * S, h * S);
 }
 function drawMusicBtn() {   // eighth note, crossed out when the music is off
   const x = VW - 44, y = 8, c = '#2a1f3d';
@@ -2754,6 +2788,7 @@ function drawHUD() {
   } else {
     text(score + 'M', VW / 2, 14, 3, '#ffffff');
     text('BEST ' + Math.max(best, score) + 'M', VW / 2, 42, 1, '#ffffff');
+    if (state === 'play') drawBuoy();
     if (streak >= 3 && state === 'play') text('STREAK X' + streak, VW / 2, 54, 1, RAINBOW[Math.floor(animT * 8) % RAINBOW.length]);
   }
   for (const p of popups) {
@@ -2921,7 +2956,7 @@ function boot() {
 // test hooks (used by automated checks; harmless in play)
 window.__jsj = {
   get state() { return state; }, get score() { return score; }, get speed() { return speed; }, get obstacles() { return obstacles; },
-  get airborne() { return P.airborne; }, get emote() { return emote; }, startEmote, visFrame, get streak() { return streak; }, get meters() { return meters(); }, get dir() { return dir; },
+  get airborne() { return P.airborne; }, get emote() { return emote; }, startEmote, visFrame, get streak() { return streak; }, get meters() { return meters(); }, get buoy() { return buoy; }, get safeT() { return safeT; }, get dir() { return dir; },
   get save() { return save; }, get board() { return board; }, get boardOpen() { return boardOpen; }, boardRows, openBoard, goTitle, get syncStatus() { return syncStatus; }, get musicNow() { return musicNow; }, get musicLoading() { return musicLoading; }, songWanted, toggleMusic, openShop, shopTap, shopLayout, tintedPlayer, ITEM, SHOP, step(sec) { for (let i = 0; i < sec / STEP; i++) update(STEP); draw(); }, get shopPage() { return shopPage; }, set shopPage(v) { shopPage = v; }, set shopTab(v) { shopTab = v; },
   press, release, debug(o) { if ('dist' in o) dist = o.dist; if ('t' in o) t = o.t; if ('streak' in o) streak = o.streak; if ('bonus' in o) bonus = o.bonus; },
 };
