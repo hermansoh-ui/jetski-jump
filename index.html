@@ -2486,7 +2486,7 @@ function drawSky() {
     const x = mod(c.x - scroll * c.f, span) - im.width - 20;
     ctx.drawImage(im, Math.round(x), c.y);
   }
-  const isl = envIsland(envId), span = isl.width + (E.world ? 70 : 170);
+  const isl = envIsland(envId), span = isl.width + (E.world ? -2 : 170);   // world skylines tile edge to edge
   for (let x = mod(40 - scroll * 0.02, span) - span; x < VW; x += span) ctx.drawImage(isl, Math.round(x), HORIZON - isl.height + 3);
   if (E.island === 'lighthouse' && Math.floor(animT * 1.5) % 2) for (let x = mod(40 - scroll * 0.02, span) - span; x < VW; x += span) { rect(x + 96, HORIZON - isl.height + 3 + 2, 4, 2, '#fff6b0'); rect(x + 76, HORIZON - isl.height + 5, 20, 1, 'rgba(255,246,176,0.5)'); }
 }
